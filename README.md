@@ -66,6 +66,7 @@ benefit automatically because interception happens in the network stack.
 - [参数说明](#参数说明)
 - [给遇到不同设备的人：怎么重新测自己的网络](#给遇到不同设备的人怎么重新测自己的网络)
 - [目录结构](#目录结构)
+- [局限与不适用场景](#局限与不适用场景)
 - [常见问题](#常见问题)
 - [免责声明与合法使用](#免责声明与合法使用)
 - [许可证](#许可证)
@@ -153,6 +154,11 @@ cut = max(min_cut, domain_start - guard)
 ## 实测数据
 
 所有数据都在 [`research/`](research/) 里，脚本可重跑。
+
+> ⚠️ **这些数字属于 2026-10-12 那一条特定链路，不是普遍规律。**
+> 同一天稍晚换到另一条链路重测时，连 0 号对照组都没被 RST —— 说明那台设备不在了。
+> 所以**务必先跑对照组**，再决定要不要相信下面任何一条结论。详见
+> [`research/README.md`](research/README.md)。
 
 ### 1. 封锁面测绘（103 个唯一域名）
 
@@ -391,20 +397,26 @@ cut = max(min_cut, domain_start - guard)
 
 不同厂商设备的阈值、是否重组、查不查 UDP 都不一样。**别信本文的数字，去测你自己的。**
 
+> ⚠️ **先跑对照组。** 如果 0 号对照组（整包一次发）都没被 RST，说明这台设备根本不在这条
+> 链路上，此时任何「分片有效」的结论都是假的。详见 [`research/README.md`](research/README.md)。
+
 ```bat
-:: 1. 先看这台设备的封锁面：跑一遍域名清单，得到 RST / OK 判决
+:: 1. 先看对照组有没有 RST —— 没有就说明设备不在，别往下做了
+python research\frag_bypass_test.py
+
+:: 2. 有 RST 才继续：跑一遍域名清单，得到 RST / OK 判决
 python research\gamelist_probe.py
 
-:: 2. 扫切点：找到你这台设备真正放行的首段长度区间
+:: 3. 扫切点：找到你这台设备真正放行的首段长度区间（会打印分界点）
 python tools\sweep_cut.py
-
-:: 3. 验证"到底是不是只看首包 SNI"：构造对照连接
-python research\probe_fast.py
 
 :: 4. 判断 UDP 有没有被拦（QUIC 版本协商法，不需要加密）
 python research\quic_probe.py
 
-:: 5. A/B 测分片开销
+:: 5. 定位延迟瓶颈：DNS / TCP 建连 / TLS 握手 / 代理 分段
+python research\probe_fast.py
+
+:: 6. A/B 测分片开销
 python research\ping_battery.py
 ```
 
@@ -421,10 +433,13 @@ FragDPI/
 ├── NOTICE                       第三方组件归属（WinDivert / GoodbyeDPI）
 ├── README.md                    本文件
 ├── .gitignore
+├── .gitattributes               .cmd 强制 CRLF；二进制不做转换
+├── .github/workflows/tests.yml  CI：跨平台单测 + 离线算法校验 + 二进制哈希校验
 │
 ├── start_console.cmd            启动控制台（自动提权，自动找 Python）
 ├── stop_console.cmd             结束控制台
 ├── stop_console.py              按端口结束进程（不依赖 taskkill）
+├── run_tests.cmd                一键跑全部测试（不需要管理员）
 │
 ├── core/
 │   ├── fragcore.py              ★ 引擎核心：SNI 解析 / 规则 / 分片 / WinDivert 封装
@@ -439,13 +454,17 @@ FragDPI/
 │       ├── fragproxy.py         用户态代理版本（不需要驱动）
 │       └── start_proxy.cmd
 │
-├── research/                    实测研究脚本与原始结果
+├── tests/                       53 个单测，不需要管理员 / 不需要驱动
+│   └── test_fragcore.py
+│
+├── research/                    实测研究脚本与原始结果（见 research/README.md）
 │   ├── _common.py               共享工具（网关/DNS 自动探测、统一输出路径）
+│   ├── frag_bypass_test.py      ★ 判定「设备只看首包」的决定性实验
 │   ├── gamelist_probe.py        域名清单探测 → gamelist_result.json
 │   ├── gamelist2_probe.py       第二批域名 → gamelist2_result.json
 │   ├── quic_probe.py            QUIC 版本协商探针（UDP 是否被拦）
 │   ├── udp_probe.py             STUN/UDP 出网探测
-│   ├── probe_fast.py            快速对照实验
+│   ├── probe_fast.py            DNS/TCP/TLS 分段测延迟
 │   ├── ping_battery.py          A/B 延迟对比 → ab_fragment.txt
 │   ├── zzz_web_probe.py         DNS/TLS/HTTP 多维度取证
 │   └── *.json / *.txt           原始结果（保持未修图，便于复核）
@@ -453,6 +472,35 @@ FragDPI/
 ├── screenshots/
 └── third_party/windivert/       WinDivert 2.2 x64（LGPL-3.0）+ 说明
 ```
+
+### 跑测试
+
+```bat
+run_tests.cmd                  :: Windows 一键跑全部（不需要管理员）
+python -m unittest discover -s tests -v
+```
+
+53 个单测覆盖 SNI 解析（含截断包与畸形包）、规则匹配、IPv4/IPv6 分片、
+payload 逐字节还原、seq 连续性与 2³² 回绕、LSO 大包重分段、IP/TCP 长度字段更新。
+**全部是纯计算，不需要管理员权限，也不加载内核驱动** —— 所以 Linux 上也能跑，
+CI 里就是这么做的。
+
+---
+
+## 局限与不适用场景
+
+诚实地列出来，免得你白折腾：
+
+| 局限 | 说明 | 怎么办 |
+|---|---|---|
+| **只在一种设备上验证过** | 全部结论来自 2026-10-12 那台行为管理设备。别的品牌可能阈值不同 | 先跑对照组 + `sweep_cut.py` 重测 |
+| **设备若做 TCP 流重组，本方案无效** | 分片的前提是「只看首包」。若设备重组后再查，怎么切都没用 | 那类设备需要别的思路（如 TCP 层伪造、多路径） |
+| **依赖 SNI 明文** | 域名加密（ECH/ESNI）普及后，SNI 不可见 → 设备也没法按域名拦，本工具失去意义 | 这其实是好事：问题会自己消失 |
+| **仅 Windows** | WinDivert 是 Windows 内核驱动 | Linux 用 `zapret`，macOS 用 `spoofdpi` |
+| **只拦 443** | 默认只处理目标端口 443 | 游戏用非 443 端口做 TLS 时，改 `port` |
+| **需要管理员权限** | 加载内核驱动无法避免 | 不接受的话用 `tools/fragproxy/` 的用户态代理版（只对走代理的程序生效） |
+| **可能违反所在网络的使用协议** | 见下方免责声明 | 需要例外时走正规流程申请 |
+| **提升的是可用性，不是匿名性** | 不做任何身份隐藏，也不加密任何东西 | 这不是本工具的定位 |
 
 ---
 

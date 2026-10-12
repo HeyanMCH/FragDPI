@@ -15,6 +15,33 @@
 **换一个网络，这些数字大概率不成立。** 不同厂商设备的阈值、是否做流重组、要不要查 UDP
 都可能不同。所以本目录的价值不在「结论」，而在「方法」—— 拿这套脚本去测你自己的网络。
 
+### ⚠️ 先跑对照组，再相信任何一个「通过 / 被拦」
+
+这是本项目踩过最深的坑，写在最前面：
+
+> **方法不对时，超时不是封锁的证据；设备不在了，同样可以把结论带偏。**
+
+两个真实例子：
+
+1. 最初拿 STUN 包去打 UDP 443，全部超时，差点写成「UDP 443 被封」。
+   实际上 QUIC 服务器**会直接忽略非 QUIC 报文**。换成 QUIC 版本协商探针，结论立刻反转。
+2. 2026-10-12 当天稍晚换到另一条链路（同城、另一个出口）再测时，
+   `frag_bypass_test.py` 的 **0 号对照组（整包一次发）也通过了** —— 说明那台设备根本不在
+   这条链路上，于是 8 个实验全部"成功"，而此时任何"分片有效"的结论都是假的。
+   同一次 `sweep_cut.py` 也从 cut=1 起全部通过，一个 RST 都没有。
+
+所以正确顺序永远是：
+
+```bat
+python frag_bypass_test.py     :: ① 先看 0 号对照组有没有被 RST
+                               ::    没被 RST → 这台设备不在，后面所有结论都不成立，收工
+python gamelist_probe.py       :: ② 有 RST 才有必要往下做，先摸清封锁面
+python ..\tools\sweep_cut.py   :: ③ 再扫阈值
+```
+
+`gamelist_probe.py` 里的 `verdict` 字段也是为这个目的设计的 ——
+`RST` 才是封锁证据，`DNS_FAIL` / `TCP_FAIL` 都不是。
+
 ## 脚本
 
 | 脚本 | 做什么 | 产出 |
@@ -64,13 +91,16 @@
 
 ```bat
 :: 0) 无依赖，直接用系统 Python 跑
-python frag_bypass_test.py         :: 先确认这台设备"只看首包"
-python gamelist_probe.py           :: 再测封锁面
-python ..\tools\sweep_cut.py       :: 扫出你这台设备的放行区间
-python quic_probe.py               :: 顺带确认 UDP 有没有被单独限制
-python probe_fast.py               :: 定位延迟瓶颈
-python ping_battery.py             :: A/B 对比分片开销
+python frag_bypass_test.py         :: ① 先看 0 号对照组：有没有 RST？没有就说明设备不在，收工
+python gamelist_probe.py           :: ② 有 RST 才继续，先摸清封锁面
+python ..\tools\sweep_cut.py       :: ③ 扫出你这台设备的放行区间（它自己会打印分界点）
+python quic_probe.py               :: ④ 顺带确认 UDP 有没有被单独限制
+python probe_fast.py               :: ⑤ 定位延迟瓶颈（DNS / TCP / TLS / 代理 分段）
+python ping_battery.py             :: ⑥ A/B 对比分片开销
 ```
 
 > 这些脚本都**不做任何注入或篡改**，只是主动发起连接、观察对端/中间设备的反应。
 > 请仅在你拥有或已获授权的网络上运行。
+>
+> `frag_bypass_test.py` 与 `sweep_cut.py` 里都留了一个 `FALLBACK_IP`（2026-10-12 当天的
+> DNS 解析结果），只在域名解析失败时兜底 —— 正常情况下每次都会重新解析。
