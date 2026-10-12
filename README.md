@@ -9,6 +9,7 @@
 > first TCP segment**. Ships with a local web GUI, a domain rule engine, and the full
 > set of reproducible measurement scripts used to reverse-engineer the device.
 
+[![tests](https://github.com/HeyanMCH/FragDPI/actions/workflows/tests.yml/badge.svg)](https://github.com/HeyanMCH/FragDPI/actions/workflows/tests.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Platform: Windows x64](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](#运行要求)
 [![Python: 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB.svg)](#运行要求)
