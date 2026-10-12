@@ -140,6 +140,15 @@ body::after{
 .mode.sel.global::before{background:var(--warn);box-shadow:0 0 12px rgba(255,176,32,.4)}
 .mode.sel.global .num,.mode.sel.global .nm{color:var(--warn)}
 .mode.sel.global .tick{background:var(--warn);border-color:var(--warn)}
+.mode.sel.privacy{border-color:var(--info);background:linear-gradient(90deg,rgba(79,195,255,.15),rgba(79,195,255,.02))}
+.mode.sel.privacy::before{background:var(--info);box-shadow:0 0 12px rgba(79,195,255,.45)}
+.mode.sel.privacy .num,.mode.sel.privacy .nm{color:var(--info)}
+.mode.sel.privacy .tick{background:var(--info);border-color:var(--info);color:#000}
+.pvnote{display:none;margin:0 0 10px;padding:9px 11px;border:1px solid var(--info);
+  border-left-width:3px;background:rgba(79,195,255,.07);color:var(--ink);
+  font-size:11.5px;line-height:1.55}
+body.privacy-on .pvnote{display:block}
+.pvnote b{color:var(--info)}
 
 /* ================= 表单控件 ================= */
 .field{display:flex;flex-direction:column;gap:5px}
@@ -307,8 +316,10 @@ select{cursor:pointer}
 /* 预览模式下禁用操作控件 */
 body.demo .modes,body.demo .rules,body.demo .editor .btns,
 body.demo #b-saveparams,body.demo #b-selftest,body.demo #b-start,body.demo #b-stop,
+body.demo #b-saveprivacy,body.demo #b-dnscheck,body.demo .pvctl,
 body.demo .iconb,body.demo .sw{pointer-events:none}
 body.demo #b-start,body.demo #b-stop,body.demo #b-saveparams,body.demo #b-selftest,
+body.demo #b-saveprivacy,body.demo #b-dnscheck,body.demo .pvctl,
 body.demo .iconb,body.demo .sw{opacity:.42}
 body.demo .editor{position:relative}
 body.demo .editor::after{
@@ -342,7 +353,8 @@ body.demo .editor::after{
       <section class="panel">
         <div class="panel-hd"><span class="idx">01</span><h2>工作模式</h2></div>
         <div class="modes" id="modes"></div>
-        <div class="hint">「规则模式」只处理命中规则的目标；「全局模式」对所有 TLS 443 首包分片（覆盖面最大，代价是每个连接多一个包）。</div>
+        <div class="hint">「规则模式」只处理命中规则的目标；「全局模式」对所有 TLS 首包分片；
+          <b style="color:var(--info)">「隐私模式」也对所有 TLS 分片，但事件日志不记录任何域名</b> —— 注意它只藏 SNI，藏不了明文 DNS 与目的 IP。</div>
       </section>
 
       <section class="panel">
@@ -352,17 +364,55 @@ body.demo .editor::after{
           <div class="field"><label>守卫 guard (B)</label><input type="number" id="p-guard" min="0" max="60"></div>
           <div class="field"><label>最小切点 min-cut</label><input type="number" id="p-mincut" min="0" max="1400"></div>
           <div class="field"><label>MTU</label><input type="number" id="p-mtu" min="576" max="9000"></div>
-          <div class="field"><label>TCP 端口</label><input type="number" id="p-port" min="1" max="65535"></div>
+          <div class="field"><label>TCP 端口（多个用逗号分隔）</label><input type="text" id="p-ports" placeholder="443"></div>
         </div>
         <div class="row" style="margin-top:12px"><button class="btn sm" id="b-saveparams">保存参数</button></div>
         <div class="hint">
           切点 = 域名起始位置 − guard，且不低于 min-cut。<br>
-          首段必须 ≥ 114B 且不含完整域名，否则设备会把两段攒起来照样识别。
+          首段必须 ≥ 114B 且不含完整域名，否则设备会把两段攒起来照样识别。<br>
+          端口支持多个，如 <span style="color:var(--ink)">443,8443,2053</span>（非 443 的 TLS 站点很多）。
         </div>
       </section>
 
       <section class="panel">
-        <div class="panel-hd"><span class="idx">03</span><h2>运行控制</h2></div>
+        <div class="panel-hd"><span class="idx">03</span><h2>隐私保护</h2>
+          <span class="tail" id="t-privacy">未启用</span></div>
+        <div class="params pvctl">
+          <div class="field"><label>随机切点（反指纹）</label>
+            <select id="pv-random">
+              <option value="0">关闭（推荐）</option>
+              <option value="1">开启</option>
+            </select></div>
+          <div class="field"><label>退出时清空事件日志</label>
+            <select id="pv-clear">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select></div>
+          <div class="field"><label>加密 DNS（DoT/DoH）</label>
+            <select id="pv-dns">
+              <option value="1">开启（隐私模式自动接管）</option>
+              <option value="0">关闭</option>
+            </select></div>
+          <div class="field"><label>加密 DNS 状态</label>
+            <div id="pv-dnsstate" style="padding:7px 0;font-size:12px;color:var(--muted)">未启用</div></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn sm" id="b-saveprivacy">保存隐私选项</button>
+          <button class="btn sm ghost" id="b-dnscheck" style="margin-left:auto"
+                  title="检查域名会不会从明文 DNS 泄露出去">DNS 泄露自检</button>
+        </div>
+        <div class="st" id="dns" style="display:none"></div>
+        <div class="hint">
+          <b style="color:var(--info)">隐私模式能藏住的</b>：TLS SNI、本机日志里的域名、
+          明文 DNS（经 DoH 存根加密，默认开启）。<br>
+          <b style="color:var(--bad)">藏不住的</b>：目的 IP、TLS 1.2 明文证书、JA3 指纹。<br>
+          <span style="color:var(--warn)">随机切点默认关闭</span> —— 「窗口内每个 cut 都放行」这个前提尚未实测验证，
+          开启前请先跑 <span style="color:var(--ink)">tools/sweep_cut.py --window</span> 扫描。
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">04</span><h2>运行控制</h2></div>
         <div class="actions">
           <div class="row">
             <button class="btn go" id="b-start">▶ 启动拦截</button>
@@ -385,7 +435,7 @@ body.demo .editor::after{
     <div class="col">
 
       <section class="panel">
-        <div class="panel-hd"><span class="idx">04</span><h2>实时统计</h2>
+        <div class="panel-hd"><span class="idx">05</span><h2>实时统计</h2>
           <span class="tail" id="t-since">—</span></div>
         <div class="tiles">
           <div class="tile"><div class="k">已见报文</div><div class="v" id="s-seen">0</div></div>
@@ -396,7 +446,7 @@ body.demo .editor::after{
       </section>
 
       <section class="panel">
-        <div class="panel-hd"><span class="idx">05</span><h2>规则系统</h2>
+        <div class="panel-hd"><span class="idx">06</span><h2>规则系统</h2>
           <span class="tail" id="t-rulecount">0 条</span></div>
         <div class="rules" id="rules"></div>
 
@@ -427,8 +477,14 @@ body.demo .editor::after{
       </section>
 
       <section class="panel">
-        <div class="panel-hd"><span class="idx">06</span><h2>事件日志</h2>
+        <div class="panel-hd"><span class="idx">07</span><h2>事件日志</h2>
           <span class="tail"><button class="btn sm ghost" id="b-clearlog">清空</button></span></div>
+        <div class="pvnote" id="pv-note">
+          <b>隐私模式生效中</b> —— 每条分片事件只记录「首段长度」，不记录域名。
+          退出控制台时按你的设置自动清空。<br>
+          加密 DNS（DoT/DoH）默认随隐私模式自动接管：<b>127.0.0.1</b> 的本地存根把查询
+          转成 HTTPS 发往阿里/腾讯 DoH，链路上不再有明文域名。切离隐私模式或退出时自动复原。
+        </div>
         <div class="log" id="log"><div class="empty">等待事件…</div></div>
       </section>
 
@@ -459,7 +515,10 @@ const DEMO_STATE = {
     {name:'关键词兜底（SNI 被截断时按原始字节匹配）',type:'keyword',value:'mihoyo,hoyoverse,steampowered,steamstatic,battle.net,pubgmobile',enabled:true,hits:9},
     {name:'示例 · 自定义域名（默认停用）',type:'suffix',value:'example.com',enabled:false,hits:0}
   ],
-  params:{guard:6,min_cut:124,mtu:1500,port:443},
+  params:{guard:6,min_cut:124,mtu:1500,port:443,random_cut:false,ports:[]},
+  privacy:{active:false,random_cut:false,ports:[443],clear_on_exit:true,
+           dns_encrypt:true,dns_active:false,dns_switched:false},
+  mode_label:'规则模式',
   stats:{seen:31842,split:178,sent:31998,last_domain:'zzz.mihoyo.com'},
   device_threshold:114,
   last_selftest:{host:'zzz.mihoyo.com',ok:true,ms:81,ip:'61.164.114.228',proxy_used:false,at:'16:12:04'},
@@ -504,7 +563,8 @@ async function POST(p, data){
 const MODE_META = [
   {id:'off',    num:'00', nm:'关闭',     ds:'完全放行，不做任何改动（用于对照测试）'},
   {id:'rules',  num:'01', nm:'规则模式', ds:'仅对命中规则的域名分片，推荐日常使用'},
-  {id:'global', num:'02', nm:'全局模式', ds:'所有 TLS 443 首包一律分片，覆盖全部域名'},
+  {id:'global', num:'02', nm:'全局模式', ds:'所有 TLS 首包一律分片，但日志仍记录域名'},
+  {id:'privacy',num:'03', nm:'隐私模式', ds:'所有 TLS 分片，且日志不记录任何域名'},
 ];
 
 function renderTop(){
@@ -517,8 +577,8 @@ function renderTop(){
   $('p-engine').className = 'pill ' + (s.running && !DEMO ? 'good':'');
   $('d-engine').className = 'dot ' + (s.running && !DEMO ? 'on':'off');
 
-  const mn = {off:'关闭',rules:'规则模式',global:'全局模式'}[s.mode] || s.mode;
-  $('t-mode').textContent = mn;
+  const mn = {off:'关闭',rules:'规则模式',global:'全局模式',privacy:'隐私模式'}[s.mode] || s.mode;
+  $('t-mode').textContent = s.mode_label || mn;
 
   $('t-uptime').textContent = s.uptime!=null ? fmtDur(s.uptime) : '--';
   $('b-start').disabled = DEMO || s.running || busy;
@@ -539,7 +599,9 @@ function renderModes(){
   box.innerHTML = '';
   MODE_META.forEach(m=>{
     const b = document.createElement('button');
-    b.className = 'mode' + (STATE.mode===m.id ? ' sel'+(m.id==='global'?' global':'') : '');
+    b.className = 'mode' + (STATE.mode===m.id
+      ? ' sel' + (m.id==='global' ? ' global' : (m.id==='privacy' ? ' privacy' : ''))
+      : '');
     b.innerHTML = `<span class="num">${m.num}</span>
       <span><span class="nm">${m.nm}</span><span class="ds">${m.ds}</span></span>
       <span class="tick">${STATE.mode===m.id?'当前':'切换'}</span>`;
@@ -557,16 +619,42 @@ function renderStats(){
   $('s-seen').textContent = t.seen;
   $('s-split').textContent = t.split;
   $('s-sent').textContent = t.sent;
-  $('s-domain').textContent = t.last_domain || '—';
+  $('s-domain').textContent = (STATE.privacy && STATE.privacy.active)
+      ? '（已隐去）' : (t.last_domain || '—');
 }
 
 /* ---------- 渲染：参数 ---------- */
 function renderParams(){
-  const p = STATE.params, map = {guard:'p-guard', min_cut:'p-mincut', mtu:'p-mtu', port:'p-port'};
+  const p = STATE.params;
+  const map = {guard:'p-guard', min_cut:'p-mincut', mtu:'p-mtu'};
   for(const k in map){
     const el = $(map[k]);
     if(document.activeElement !== el) el.value = p[k];
   }
+  const portEl = $('p-ports');
+  if(document.activeElement !== portEl)
+    portEl.value = ((STATE.privacy && STATE.privacy.ports) || [p.port]).join(',');
+}
+
+/* ---------- 渲染：隐私保护 ---------- */
+function renderPrivacy(){
+  const pv = STATE.privacy || {};
+  const r = $('pv-random'), c = $('pv-clear'), d = $('pv-dns');
+  if(document.activeElement !== r) r.value = pv.random_cut ? '1' : '0';
+  if(document.activeElement !== c) c.value = pv.clear_on_exit ? '1' : '0';
+  if(d && document.activeElement !== d) d.value = pv.dns_encrypt ? '1' : '0';
+  const st = $('pv-dnsstate');
+  if(st){
+    st.style.color = '';
+    if(pv.dns_switched)      { st.textContent='已接管系统 DNS（退出/切离时自动复原）'; st.style.color='var(--ok)'; }
+    else if(pv.dns_active)   { st.textContent='存根运行中，但未接管系统 DNS（需管理员）'; st.style.color='var(--warn)'; }
+    else if(pv.dns_encrypt)  { st.textContent='未启用（进入隐私模式时自动接管）'; }
+    else                     { st.textContent='关闭'; }
+  }
+  const tail = $('t-privacy');
+  tail.textContent = pv.active ? '已启用' : '未启用';
+  tail.style.color = pv.active ? 'var(--info)' : '';
+  document.body.classList.toggle('privacy-on', !!pv.active);
 }
 
 /* ---------- 渲染：规则 ---------- */
@@ -633,9 +721,38 @@ $('b-rulereset').onclick = ()=>{ if(confirm('载入内置游戏预设？\n当前
 /* ---------- 参数 ---------- */
 $('b-saveparams').onclick = async ()=>{
   const res = await POST('/api/params',{guard:$('p-guard').value, min_cut:$('p-mincut').value,
-                                        mtu:$('p-mtu').value, port:$('p-port').value});
+                                        mtu:$('p-mtu').value, ports:$('p-ports').value});
   if(!res.ok) alert(res.error||'保存失败'); await refresh();
 };
+$('b-saveprivacy').onclick = async ()=>{
+  const res = await POST('/api/privacy',{random_cut:$('pv-random').value==='1',
+                                         clear_on_exit:$('pv-clear').value==='1',
+                                         dns_encrypt:$('pv-dns').value==='1'});
+  if(!res.ok) alert(res.error||'保存失败');
+  await refresh();
+  setTimeout(refresh, 2500);   // 加密 DNS 是异步起动的，稍后再刷一次拿状态
+};
+$('b-dnscheck').onclick = async ()=>{
+  const b=$('b-dnscheck'); b.disabled=true; b.textContent='检测中…';
+  const r = await POST('/api/dnscheck',{});
+  b.disabled=false; b.textContent='DNS 泄露自检';
+  if(r.ok) showDns(r.result); else alert(r.error||'检测失败');
+  pollEvents(); await refresh();
+};
+function showDns(x){
+  const box=$('dns'); box.style.display='';
+  box.className='st ' + (x.encrypted_available?'ok':'bad');
+  const dot=(x.dot||[]).filter(d=>d.ms).map(d=>d.name).join(' / ');
+  const doh=(x.doh||[]).filter(d=>d.ok).map(d=>d.name).join(' / ');
+  const poison=(x.poisoned||[]).length;
+  box.innerHTML=`<div class="head"><b>${x.encrypted_available?'有加密 DNS 通道可用':'没有可用的加密 DNS 通道'}</b>
+      <span style="color:var(--muted);font-size:10.5px">明文 DNS 无法避免：域名会从这条通道泄露</span></div>
+    <div class="kv">当前解析器 &nbsp;<i>${esc((x.resolvers||[]).join(', ')||'未知')}</i>${
+      x.resolver_is_local?' &nbsp;<span style="color:var(--warn)">内网地址</span>':''}</div>
+    <div class="kv">加密通道 &nbsp;<i>${esc(dot||'—')}</i> &nbsp;/&nbsp; <i>${esc(doh||'—')}</i></div>
+    ${poison?`<div class="kv" style="color:#ff9aa4">疑似 DNS 污染 &nbsp;<i style="color:#ff9aa4">${esc(x.poisoned.join(', '))}</i></div>`:''}
+    ${x.encrypted_available?`<div class="kv" style="color:var(--muted)">建议：把系统或浏览器的「安全 DNS」指向上面的 DoH/DoT 端点</div>`:''}`;
+}
 
 /* ---------- 控制 ---------- */
 $('b-start').onclick = async ()=>{ busy=true; renderTop();
@@ -685,8 +802,9 @@ $('b-clearlog').onclick = ()=>{ POST('/api/events/clear'); $('log').innerHTML='<
 /* ---------- 主循环 ---------- */
 function applyState(s){
   STATE = s;
-  renderTop(); renderModes(); renderStats(); renderParams(); renderRules();
+  renderTop(); renderModes(); renderStats(); renderParams(); renderPrivacy(); renderRules();
   if(s.last_selftest && $('st').style.display==='none') showSelftest(s.last_selftest);
+  if(s.last_dnscheck && $('dns').style.display==='none') showDns(s.last_dnscheck);
 }
 function enterDemo(){
   if(DEMO) return;

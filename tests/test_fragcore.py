@@ -4,11 +4,16 @@
 
 覆盖：
   · parse_sni        —— TLS ClientHello 里 SNI 的解析与偏移定位（含截断包）
-  · Rule / RuleSet   —— suffix / keyword 匹配，三态模式，命中计数
+  · Rule / RuleSet   —— suffix / keyword 匹配，四种模式，命中计数
   · inspect          —— IPv4 / IPv6 + TCP 头部解析与长度字段
   · split_packet     —— 分片切点、分片数、payload 逐字节还原、seq 连续性、
                         首段不含完整域名、首段不低于设备阈值、MTU 上限、
                         跳过分片的边界情况
+  · privacy 模式     —— domain 不外泄、事件文本不含域名、对规则外的域名也分片、
+                        不触碰命中计数（防间接泄露）
+  · 随机切点         —— 1000 次都落在 [max(min_cut,114), 域名起点-1] 内、
+                        窗口为空时安全回退、默认关闭
+  · 多端口           —— build_filter 表达式、去重与顺序
   · 内置规则集的不变量
 
 运行：
@@ -17,6 +22,7 @@
     python tests/test_fragcore.py
 """
 import os
+import re
 import struct
 import sys
 import unittest
@@ -722,6 +728,190 @@ class TestModuleLevel(unittest.TestCase):
         eng = fc.Engine(fc.RuleSet("rules"), fc.Params(), on_event=lambda *a: None)
         self.assertFalse(eng.running)
         self.assertEqual(eng.stats["split"], 0)
+
+
+# ================================================================== privacy 模式
+HOSTNAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+", re.I)
+
+
+class TestPrivacyMode(unittest.TestCase):
+    """隐私保护模式的契约：domain 不外泄、事件文本不含域名、对全部 TLS 生效。
+
+    这些用例守着「隐私模式绝不记录域名」这条底线 —— 别为了方便调试把它们删掉。
+    """
+
+    def setUp(self):
+        self.params = fc.Params(guard=6, min_cut=124, mtu=1500, port=443)
+        self.privacy = fc.RuleSet("privacy")
+        self.rules = fc.RuleSet("rules")
+
+    def test_mode_is_registered(self):
+        self.assertIn("privacy", fc.RuleSet.MODES)
+        self.assertEqual(fc.RuleSet("privacy").decide("anything.example", None),
+                         (True, "隐私模式"))
+
+    def test_domain_is_never_exposed(self):
+        hello, _ = build_hello_with_domain_at(200, b"www.some-private-site.com")
+        pkt = build_ipv4_packet(hello)
+        res = fc.split_packet(pkt, self.privacy, self.params)
+        self.assertIsNotNone(res["info"], "隐私模式应当分片")
+        self.assertIsNone(res["domain"], "privacy 模式下 domain 必须为 None")
+
+    def test_info_text_contains_no_hostname(self):
+        """事件文本里不得出现任何域名 —— 这是隐私模式的核心承诺。"""
+        for dom in (b"www.some-private-site.com", b"zzz.mihoyo.com", b"a.co"):
+            hello, _ = build_hello_with_domain_at(200, dom)
+            pkt = build_ipv4_packet(hello)
+            res = fc.split_packet(pkt, self.privacy, self.params)
+            with self.subTest(dom=dom):
+                self.assertIsNotNone(res["info"])
+                self.assertNotIn(dom.decode(), res["info"])
+                self.assertIsNone(HOSTNAME_RE.search(res["info"]),
+                                  "事件文本出现了疑似域名：%r" % res["info"])
+
+    def test_splits_domains_that_rules_would_ignore(self):
+        """规则模式放行的域名，隐私模式也必须分片。"""
+        hello, _ = build_hello_with_domain_at(200, b"www.some-private-site.com")
+        pkt = build_ipv4_packet(hello)
+        self.assertEqual(len(fc.split_packet(pkt, self.rules, self.params)["packets"]), 1)
+        res = fc.split_packet(pkt, self.privacy, self.params)
+        self.assertEqual(len(res["packets"]), 2)
+
+    def test_does_not_touch_rule_hit_counters(self):
+        """隐私模式不遍历规则 —— hits 必须保持 0，避免间接暴露访问了哪一类站点。"""
+        hello, _ = build_hello_with_domain_at(200, b"zzz.mihoyo.com")
+        pkt = build_ipv4_packet(hello)
+        for _ in range(5):
+            fc.split_packet(pkt, self.privacy, self.params)
+        self.assertEqual(sum(r.hits for r in self.privacy.rules), 0)
+
+    def test_skip_message_also_hides_domain(self):
+        """域名位置太靠前而跳过分片时，说明文本也不能带域名。"""
+        pkt = build_ipv4_packet(build_short_client_hello(b"zzz.mihoyo.com"))
+        res = fc.split_packet(pkt, self.privacy, self.params)
+        self.assertIsNotNone(res["info"])
+        self.assertIn("跳过", res["info"])
+        self.assertNotIn("zzz.mihoyo.com", res["info"])
+        self.assertIsNone(res["domain"])
+
+    def test_privacy_still_reassembles_losslessly(self):
+        hello, _ = build_hello_with_domain_at(200, b"secret.example.net")
+        pkt = build_ipv4_packet(hello, seq=4242)
+        res = fc.split_packet(pkt, self.privacy, self.params)
+        chk = reassemble_and_check(res["packets"], ver=4)
+        self.assertEqual(chk["payload"], hello)
+        self.assertTrue(chk["seq_ok"])
+        self.assertTrue(chk["ip_len_ok"])
+        first = strip_and_split(res["packets"][0], 4)[2]
+        self.assertNotIn(b"secret.example.net", first)
+        self.assertGreaterEqual(len(first), fc.MEASURED_DEVICE_THRESHOLD)
+
+    def test_privacy_covers_ipv6_too(self):
+        hello, _ = build_hello_with_domain_at(200, b"secret.example.net")
+        pkt = build_ipv6_packet(hello)
+        res = fc.split_packet(pkt, self.privacy, self.params)
+        self.assertIsNotNone(res["info"])
+        self.assertIsNone(res["domain"])
+        chk = reassemble_and_check(res["packets"], ver=6)
+        self.assertEqual(chk["payload"], hello)
+
+    def test_global_records_domain_but_privacy_does_not(self):
+        """固定住 global 与 privacy 的语义差异 —— 这正是加 privacy 的理由。"""
+        hello, _ = build_hello_with_domain_at(200, b"www.some-private-site.com")
+        pkt = build_ipv4_packet(hello)
+        g = fc.split_packet(pkt, fc.RuleSet("global"), self.params)
+        p = fc.split_packet(pkt, self.privacy, self.params)
+        self.assertEqual(g["domain"], "www.some-private-site.com")
+        self.assertIn("www.some-private-site.com", g["info"])
+        self.assertIsNone(p["domain"])
+        self.assertNotIn("www.some-private-site.com", p["info"])
+
+
+class TestRandomCut(unittest.TestCase):
+    """随机切点：必须始终落在合法窗口内，且不能泄露完整域名。"""
+
+    def _first_len(self, res):
+        return len(strip_and_split(res["packets"][0], 4)[2])
+
+    def test_cut_always_inside_legal_window(self):
+        hello, start = build_hello_with_domain_at(200, b"zzz.mihoyo.com")
+        pkt = build_ipv4_packet(hello)
+        p = fc.Params(min_cut=124, random_cut=True)
+        rs = fc.RuleSet("privacy")
+        lo = max(p.min_cut, fc.MEASURED_DEVICE_THRESHOLD)
+        seen = set()
+        for _ in range(1000):
+            res = fc.split_packet(pkt, rs, p)
+            self.assertIsNotNone(res["info"])
+            first = strip_and_split(res["packets"][0], 4)[2]
+            cut = len(first)
+            self.assertGreaterEqual(cut, lo, "cut 低于实测阈值，会被设备拦")
+            self.assertLessEqual(cut, start - 1, "cut 越过了域名起点")
+            self.assertNotIn(b"zzz.mihoyo.com", first)
+            seen.add(cut)
+        self.assertGreater(len(seen), 1, "随机切点应当产生多个不同的值")
+
+    def test_random_cut_covers_the_window(self):
+        hello, start = build_hello_with_domain_at(240, b"zzz.mihoyo.com")
+        pkt = build_ipv4_packet(hello)
+        p = fc.Params(min_cut=124, random_cut=True)
+        rs = fc.RuleSet("privacy")
+        cuts = {self._first_len(fc.split_packet(pkt, rs, p)) for _ in range(300)}
+        lo = max(p.min_cut, fc.MEASURED_DEVICE_THRESHOLD)
+        expected = start - lo
+        self.assertGreater(len(cuts), max(2, expected // 2),
+                           "随机覆盖度过低：%d/%d" % (len(cuts), expected))
+
+    def test_empty_window_falls_back_without_crash(self):
+        """域名起始位置太靠前 → 窗口为空 → 回退固定逻辑，不抛异常也不泄露域名。"""
+        hello = build_short_client_hello(b"zzz.mihoyo.com")
+        _, start, _ = fc.parse_sni(hello)
+        self.assertLess(start, max(124, fc.MEASURED_DEVICE_THRESHOLD))
+        res = fc.split_packet(build_ipv4_packet(hello), fc.RuleSet("privacy"),
+                              fc.Params(min_cut=124, random_cut=True))
+        self.assertIsNotNone(res["info"])
+        self.assertIsNone(res["domain"])
+
+    def test_random_cut_off_by_default(self):
+        self.assertFalse(fc.Params().random_cut,
+                         "随机切点必须默认关闭（「窗口内均匀放行」这一前提尚未实测）")
+
+    def test_deterministic_when_disabled(self):
+        """关闭随机时，同一输入必须给出同一个切点（与改造前逐字节等价）。"""
+        hello, _ = build_hello_with_domain_at(200)
+        pkt = build_ipv4_packet(hello)
+        p = fc.Params(min_cut=124, random_cut=False)
+        rs = fc.RuleSet("privacy")
+        outs = {self._first_len(fc.split_packet(pkt, rs, p)) for _ in range(20)}
+        self.assertEqual(len(outs), 1)
+
+
+class TestMultiPort(unittest.TestCase):
+
+    def test_ports_default_single(self):
+        self.assertEqual(fc.Params().port_list(), [443])
+        self.assertEqual(fc.build_filter(fc.Params()),
+                         "outbound and tcp and (tcp.DstPort == 443)")
+
+    def test_build_filter_multi_port(self):
+        f = fc.build_filter(fc.Params(port=443, ports=[8443, 2053]))
+        for port in (443, 8443, 2053):
+            self.assertIn("tcp.DstPort == %d" % port, f)
+        self.assertEqual(f.count(" or "), 2)
+        self.assertTrue(f.startswith("outbound and tcp and ("))
+
+    def test_port_list_dedupes_and_preserves_order(self):
+        p = fc.Params(port=443, ports=[8443, 443, 2053, 8443])
+        self.assertEqual(p.port_list(), [443, 8443, 2053])
+
+    def test_params_roundtrip_with_privacy_fields(self):
+        p = fc.Params(guard=9, min_cut=200, mtu=1400, port=443,
+                      random_cut=True, ports=[8443, 2053])
+        d = fc.Params.from_dict(p.to_dict())
+        self.assertEqual((d.guard, d.min_cut, d.mtu, d.port), (9, 200, 1400, 443))
+        self.assertTrue(d.random_cut)
+        self.assertEqual(d.ports, [8443, 2053])
+        self.assertEqual(d.port_list(), [443, 8443, 2053])
 
 
 if __name__ == "__main__":

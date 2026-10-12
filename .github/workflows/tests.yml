@@ -93,3 +93,30 @@ jobs:
           assert fc.Params().min_cut > fc.MEASURED_DEVICE_THRESHOLD
           print("fragcore import + pure-python paths OK")
           PY
+
+      - name: Privacy-mode modules import on non-Windows
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "core")
+          sys.path.insert(0, "tools")
+          # 隐私模式配套工具（DNS 自检 / 本地 DoH 存根）。
+          # 它们的 Windows 专有 API（GetNetworkParams、netsh）都必须藏在函数内部，
+          # 否则非 Windows 平台 import 就会炸 —— 这一步就是守这条线的。
+          import dns_leak_check as dlc
+          import doh_stub as doh
+
+          _tid, wire = dlc.build_query("example.com")
+          assert len(wire) > 12 and wire.endswith(b"\x00\x01\x00\x01")
+          rcode, answers = dlc.parse_a_records(wire[:12])   # 畸形/空报文不能崩
+          assert answers == []
+
+          # 存根不该在 import 时就绑端口，也不该有域名解析行为
+          stub = doh.DohStub()
+          assert not stub.running
+          assert doh.LISTEN_HOST == "127.0.0.1" and doh.LISTEN_PORT == 53
+          assert doh.STUB_DNS == "127.0.0.1"
+          assert all(u.startswith("https://") for _, u in doh.DOH_UPSTREAMS), \
+              "DoH 上游必须是 https（且用 IP，避免明文 DNS 引导）"
+          print("privacy-mode modules import OK")
+          PY

@@ -6,9 +6,15 @@ fragcore — 首包分片引擎核心（WinDivert）
 职责：
   1. ctypes 绑定 WinDivert 2.2.2 x64
   2. 从 ClientHello 里**解析出真实 SNI 域名**（规则系统的基础）
-  3. 规则系统：模式 off / rules / global，规则类型 suffix（域名后缀）/ keyword（关键词）
+  3. 规则系统：模式 off / rules / global / privacy，规则类型 suffix / keyword
   4. 分片：把承载 ClientHello 的首个 TCP 报文切成多段，重算校验和后重注入
   5. Engine：后台线程跑抓包循环，事件通过回调上报
+
+关于 privacy 模式（隐私保护模式）：
+  · 对所有 TLS ClientHello 分片（不看域名、不匹配规则），让链路上的中间设备读不到 SNI
+  · **域名绝不外泄**：`split_packet` 返回的 domain 恒为 None，事件文本里不含域名
+  · 但 SNI 解析**仍然必须做** —— 切点位置依赖域名起始偏移，不解析就不知道切哪
+  · ⚠️ 它只能藏 SNI，藏不了明文 DNS / 目的 IP / 服务器证书 / JA3 指纹
 
 实测约束（2026-10-12，某校园网行为管理设备）：
   · 设备会把前几个报文攒到 **114 字节**再查：首段 <= 113 必被拦，>= 114 即通过
@@ -17,6 +23,7 @@ fragcore — 首包分片引擎核心（WinDivert）
 """
 import ctypes
 import os
+import random
 import socket
 import struct
 import sys
@@ -27,6 +34,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WINDIVERT_LAYER_NETWORK = 0
 ADDR_SIZE = 128
 MEASURED_DEVICE_THRESHOLD = 114  # 实测：首段 <=113 被拦
+
+# privacy 模式的随机切点用系统熵源（不是 Mersenne Twister）——目的是让分段方式
+# 不可预测，做一个可被设备学习的稳定签名是没意义的。
+_rng = random.SystemRandom()
 
 # WinDivert 二进制放在 <repo>/third_party/windivert/，本模块在 <repo>/core/。
 # 从 HERE 起逐级向上找，这样 core/ 与 tools/ 下的脚本都能正确定位。
@@ -272,16 +283,27 @@ def default_rules():
 
 
 class RuleSet:
-    """mode: off（不拦截）| rules（按规则）| global（全部 TLS 443）"""
+    """mode: off（不拦截）| rules（按规则）| global（全部 TLS）| privacy（隐私保护）
+
+    global 与 privacy 都是「对所有 TLS 分片」，区别在于**是否留下域名痕迹**：
+      · global  —— 仍会解析并**记录**域名（用于事件日志和"最近命中域名"展示）
+      · privacy —— 不记录任何域名，事件文本里也不含域名；且不遍历规则（不做命中计数）
+    换句话说：global 解决的是「连不上」，privacy 解决的是「别被记录」。
+    """
+
+    MODES = ("off", "rules", "global", "privacy")
 
     def __init__(self, mode="rules", rules=None):
-        self.mode = mode if mode in ("off", "rules", "global") else "rules"
+        self.mode = mode if mode in self.MODES else "rules"
         self.rules = rules if rules is not None else default_rules()
 
     def decide(self, domain, raw):
         """返回 (是否分片, 命中的规则名)"""
         if self.mode == "off":
             return (False, None)
+        if self.mode == "privacy":
+            # 刻意**不遍历规则**：既省 CPU，也避免 hits 计数间接暴露"访问了哪一类站点"
+            return (True, "隐私模式")
         if self.mode == "global":
             return (True, "全局模式")
         for r in self.rules:
@@ -301,19 +323,36 @@ class RuleSet:
 
 # ------------------------------------------------------------------ 参数 / 分片
 class Params:
-    def __init__(self, guard=6, min_cut=124, mtu=1500, port=443):
+    def __init__(self, guard=6, min_cut=124, mtu=1500, port=443,
+                 random_cut=False, ports=None):
         self.guard = guard
         self.min_cut = min_cut
         self.mtu = mtu
-        self.port = port
+        self.port = int(port)
+        # privacy 用：切点在合法窗口内随机取（默认关 —— 见 _cut_point 的说明）
+        self.random_cut = bool(random_cut)
+        # 附加 TLS 端口（主端口之外的，如 8443 / 2053）
+        self.ports = [int(p) for p in (ports or [])]
+
+    def port_list(self):
+        """去重后的端口列表，主端口排第一。"""
+        seen, out = set(), []
+        for p in [self.port] + list(self.ports):
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+        return out
 
     def to_dict(self):
-        return {"guard": self.guard, "min_cut": self.min_cut, "mtu": self.mtu, "port": self.port}
+        return {"guard": self.guard, "min_cut": self.min_cut, "mtu": self.mtu,
+                "port": self.port, "random_cut": self.random_cut,
+                "ports": self.ports}
 
     @staticmethod
     def from_dict(d):
         return Params(int(d.get("guard", 6)), int(d.get("min_cut", 124)),
-                      int(d.get("mtu", 1500)), int(d.get("port", 443)))
+                      int(d.get("mtu", 1500)), int(d.get("port", 443)),
+                      bool(d.get("random_cut", False)), d.get("ports") or [])
 
 
 def _split_into_segments(hdr, payload, cut, seq, tcp_off, ver, payload_off, mtu):
@@ -368,9 +407,42 @@ def inspect(data):
     return (ver, payload_off, payload, seq, tcp_off, total)
 
 
+def _cut_point(host_start, params):
+    """算切点偏移。
+
+    非随机模式（默认）与改造前**逐字节等价**：
+        cut = max(min_cut, host_start - guard)；若已切进域名，则取 host_start + 1
+
+    随机模式（privacy 可选）在**合法窗口**内取随机值：
+        [max(min_cut, MEASURED_DEVICE_THRESHOLD), host_start - 1]
+    下界来自实测（首段 <= 113 被拦），上界保证完整域名不进首段。
+    窗口为空（域名起始位置太靠前）时**回退到固定逻辑**，不抛异常。
+
+    ⚠️ 随机模式默认关闭。现有实测只证明了「后缀 >= 114 通过」这一个边界点，
+    并没有验证窗口内**每一个** cut 值都能过；设备行为若不单调，随机切点会随机失败。
+    开启前请先跑 tools/scan_window.py 做全窗口扫描。
+    """
+    if host_start is None:
+        return params.min_cut
+    if params.random_cut:
+        lo = max(params.min_cut, MEASURED_DEVICE_THRESHOLD)
+        hi = host_start - 1
+        if hi >= lo:
+            return _rng.randint(lo, hi)
+    cut = max(params.min_cut, host_start - params.guard)
+    if cut >= host_start:
+        cut = host_start + 1                 # 落在域名内部，避免完整域名出现在首段
+    return cut
+
+
 def split_packet(data, ruleset, params):
-    """按规则决定是否分片。返回 dict(packets, info, domain, rule)"""
+    """按规则决定是否分片。返回 dict(packets, info, domain, rule)
+
+    privacy 模式下 `domain` 恒为 None、`info` 不含域名 —— 这是隐私保护模式的**契约**，
+    有单测守着，不要为了方便调试把它改回去。
+    """
     out = {"packets": [data], "info": None, "domain": None, "rule": None}
+    privacy = (ruleset.mode == "privacy")
     r = inspect(data)
     if not r:
         return out
@@ -378,32 +450,40 @@ def split_packet(data, ruleset, params):
     if len(payload) < 6 or payload[0] != 0x16 or payload[1] != 0x03 or payload[5] != 0x01:
         return out                                  # 只处理 ClientHello
 
+    # SNI 一定要解析（切点位置依赖 host_start），但 privacy 下结果只在本函数内存活
     domain, host_start, host_end = parse_sni(payload)
-    out["domain"] = domain
     ok, rule_name = ruleset.decide(domain, payload)
     out["rule"] = rule_name
+    if not privacy:
+        out["domain"] = domain
     if not ok:
         return out
 
-    # 切点：域名起始位置之前 guard 字节；拿不到域名时用 min_cut
-    pos = host_start if host_start else None
-    if pos is None:
-        cut = params.min_cut
-    else:
-        cut = max(params.min_cut, pos - params.guard)
-        if pos and cut >= pos:
-            cut = pos + 1                            # 落在域名内部，避免完整域名出现在首段
+    cut = _cut_point(host_start, params)
     if cut <= 0 or cut >= len(payload) - 1 or cut < min(params.min_cut, MEASURED_DEVICE_THRESHOLD):
-        out["info"] = f"域名 {domain or '?'} 位置不合适（cut={cut}），跳过"
+        if privacy:
+            out["info"] = f"TLS 位置不合适（cut={cut}），跳过分片"
+        else:
+            out["info"] = f"域名 {domain or '?'} 位置不合适（cut={cut}），跳过"
         return out
 
     packets = _split_into_segments(data[:payload_off], payload, cut, seq, tcp_off,
                                    ver, payload_off, params.mtu)
     out["packets"] = packets
+    if privacy:
+        out["info"] = f"TLS 出站分片 · 首段 {cut}B（域名已隐去）"
+        return out
     seg_note = "" if len(packets) == 2 else f"，其余拆成 {len(packets) - 1} 段"
     out["info"] = (f"{domain or '未知域名'}  首段 {cut}B{seg_note}"
                    f"  命中规则：{rule_name}")
     return out
+
+
+def build_filter(params):
+    """生成 WinDivert 过滤表达式（抽成独立函数，便于单测）。"""
+    ports = params.port_list()
+    expr = " or ".join(f"tcp.DstPort == {int(p)}" for p in ports)
+    return f"outbound and tcp and ({expr})"
 
 
 # ------------------------------------------------------------------ 引擎
@@ -429,7 +509,8 @@ class Engine:
         if self.running:
             return True
         dll = load_dll()
-        flt = f"outbound and tcp and tcp.DstPort == {self.params.port}".encode()
+        ports = self.params.port_list()
+        flt = build_filter(self.params).encode()
         handle = dll.WinDivertOpen(flt, WINDIVERT_LAYER_NETWORK, 0, 0)
         if not handle or handle == ctypes.c_void_p(-1).value:
             err = ctypes.get_last_error()
@@ -441,8 +522,9 @@ class Engine:
         with self._lock:
             self._handle = handle
         self._stop.clear()
-        self.stats.update(seen=0, split=0, sent=0, started=time.time())
-        self.on_event("info", f"拦截已启动 · 模式 {self.ruleset.mode} · 端口 {self.params.port}"
+        self.stats.update(seen=0, split=0, sent=0, started=time.time(), last_domain=None)
+        self.on_event("info", f"拦截已启动 · 模式 {self.ruleset.mode}"
+                              f" · 端口 {','.join(str(p) for p in ports)}"
                               f" · guard={self.params.guard} · min-cut={self.params.min_cut}")
         self._thread = threading.Thread(target=self._loop, args=(handle,), daemon=True)
         self._thread.start()
@@ -501,7 +583,8 @@ class Engine:
             res = split_packet(data, self.ruleset, self.params)
             if res["info"]:
                 self.stats["split"] += 1
-                self.stats["last_domain"] = res["domain"]
+                if res["domain"] is not None:      # privacy 模式下恒为 None，不留痕
+                    self.stats["last_domain"] = res["domain"]
                 self.on_event("split", res["info"])
                 for p in res["packets"]:
                     if self._send(dll, handle, addr, p):

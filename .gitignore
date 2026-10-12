@@ -23,6 +23,8 @@ htmlcov/
 # 控制台把用户配置（规则集 + 参数）写在这里，属本机私有，不入库
 core/fragconfig.json
 core/fragconfig.json.tmp
+# 加密 DNS 接管时的原配置备份（含本机网卡信息，绝对不能提交）
+core/dns_backup.json
 *.tmp
 
 # 日志与临时输出
