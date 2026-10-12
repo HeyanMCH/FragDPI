@@ -22,11 +22,15 @@
 用法：
     python frag_bypass_test.py
 """
+import os
 import socket
 import ssl
 import struct
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import init_console  # noqa: E402
 
 HOST = "zzz.mihoyo.com"
 
@@ -60,6 +64,7 @@ def build_client_hello(host):
 
 
 def main():
+    init_console()
     ip = resolve(HOST)
     hello = build_client_hello(HOST)
     idx = hello.find(b"mihoyo")

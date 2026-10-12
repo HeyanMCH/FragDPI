@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """对游戏相关域名做真实 SNI 的 TLS 握手，分类「通 / 被RST / DNS失败」"""
-import sys, io, socket, ssl, time, json
+import sys, socket, ssl, time, json, os
 from concurrent.futures import ThreadPoolExecutor
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import init_console
+init_console()
 
 DOMAINS = [
  # ---- 米哈游 国服 ----

@@ -1,6 +1,7 @@
 import subprocess, re, json, socket, time, statistics, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import default_gateway, out_path
+from _common import default_gateway, out_path, init_console
+init_console()
 
 def ping_series(host, count, timeout_ms=1500):
     r = subprocess.run(["ping", "-n", str(count), "-w", str(timeout_ms), host],

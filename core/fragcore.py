@@ -19,6 +19,7 @@ import ctypes
 import os
 import socket
 import struct
+import sys
 import threading
 import time
 
@@ -93,6 +94,33 @@ def is_admin():
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
+
+
+def init_console():
+    """把 stdout/stderr 切到 UTF-8，避免中文在「被重定向」时把脚本弄崩。
+
+    Python 3.6+ 在真控制台上通过 WriteConsoleW 输出，中文永远正常；但一旦输出被重定向
+    到管道或文件（`> log.txt`、CI 捕获输出），编码就退化成系统 ANSI 代码页：中文
+    Windows 是 cp936（能编码中文，没事），英文 Windows 是 cp1252 —— 编不了中文，
+    直接 UnicodeEncodeError 把脚本弄崩。
+
+    这不是理论问题。GitHub Actions 的 Windows runner 上，8 个单测 job 全过，只有
+    `tools/fragdpi.py --packettest` 挂了，就是因为它的输出被 CI 捕获：
+        UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1
+    本地一行即可复现：
+        PYTHONIOENCODING=cp1252 python tools/fragdpi.py --packettest
+
+    处理方式：主动切 UTF-8。这样重定向出去的产物是干净的 UTF-8（而不是把中文降级成
+    '?'），而真控制台本来就是 UTF-8，等于没做事。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:                       # 极少数流不支持改编码，至少别让它崩
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
 
 
 # ------------------------------------------------------------------ SNI 解析

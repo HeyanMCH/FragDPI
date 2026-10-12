@@ -39,6 +39,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WINDIVERT_LAYER_NETWORK = 0
 ADDR_SIZE = 128  # WINDIVERT_ADDRESS 用不透明缓冲，留足空间
 
+
+def init_console():
+    """把 stdout/stderr 切到 UTF-8：输出被重定向到管道/文件时，编码会退化成系统 ANSI
+    代码页（英文 Windows 的 cp1252 编不了中文 → UnicodeEncodeError 直接崩；本项目
+    就是被 GitHub Actions 的 Windows runner 抓到这一点的）。真控制台上 Python 走
+    WriteConsoleW、本来就是 UTF-8，所以等于没做事。
+
+    本脚本刻意保持零依赖（只 import 标准库），所以这里有 core/fragcore.py 的同名函数的
+    一份拷贝。本地复现：PYTHONIOENCODING=cp1252 python tools/fragdpi.py --packettest
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
+
 # ---------------------------------------------------------------- WinDivert 绑定
 _wd = None
 
@@ -433,6 +452,7 @@ def packettest():
 
 
 def main():
+    init_console()
     ap = argparse.ArgumentParser(description="系统级首包分片工具（WinDivert，架构参考 GoodbyeDPI）")
     ap.add_argument("--keyword", default="mihoyo,hoyoverse", help="关键词，逗号分隔")
     ap.add_argument("--guard", type=int, default=6, help="在关键词前多少字节处切（建议 3~12）")

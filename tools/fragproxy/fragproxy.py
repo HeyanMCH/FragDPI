@@ -35,6 +35,23 @@ BUFSIZE = 65536
 _print_lock = threading.Lock()
 
 
+def init_console():
+    """把 stdout/stderr 切到 UTF-8，避免中文在「被重定向」时把脚本弄崩。
+
+    真控制台上 Python 走 WriteConsoleW、本来就是 UTF-8；但输出被重定向到管道/文件时，
+    编码会退化成系统 ANSI 代码页（英文 Windows 的 cp1252 编不了中文 → UnicodeEncodeError）。
+    实现与 core/fragcore.py 的同名函数一致。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
+
+
 def log(msg, verbose_only=False, args=None):
     if verbose_only and args is not None and not args.verbose:
         return
@@ -247,6 +264,7 @@ def handle(conn, addr, args):
 
 
 def main():
+    init_console()
     ap = argparse.ArgumentParser(description="首包分片代理（绕过仅查首包的 SNI 关键词检测）")
     ap.add_argument("--port", type=int, default=8888, help="监听端口，默认 8888")
     ap.add_argument("--bind", default="127.0.0.1", help="监听地址，默认 127.0.0.1")

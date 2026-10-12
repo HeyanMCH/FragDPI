@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """UDP 443 QUIC 可达性：发「不支持版本」的 Initial，服务器应回 Version Negotiation（version=0）。
    此方法不需要加密，能干净地区分「UDP443 被封」和「服务器不理非法报文」。"""
-import sys, io, socket, struct, os, time
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+import sys, socket, struct, os, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import init_console
+init_console()
 
 def quic_probe(host, port=443, timeout=6):
     dcid, scid = os.urandom(8), os.urandom(8)

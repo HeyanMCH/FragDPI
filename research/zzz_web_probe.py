@@ -1,6 +1,7 @@
 import socket, ssl, time, json, struct, random, subprocess, re, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import default_gateway, out_path
+from _common import default_gateway, out_path, init_console
+init_console()
 
 R = {"ts": time.strftime("%F %T")}
 

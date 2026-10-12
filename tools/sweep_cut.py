@@ -33,6 +33,22 @@ DEFAULT_CUTS = [1, 16, 32, 48, 64, 80, 96, 100, 104, 108, 112, 113, 114, 116,
                 120, 124, 128, 129, 130, 132, 134]
 
 
+def init_console():
+    """把 stdout/stderr 切到 UTF-8：输出被重定向到管道/文件时，编码会退化成系统 ANSI
+    代码页（英文 Windows 的 cp1252 编不了中文 → UnicodeEncodeError 直接崩）。真控制台上
+    Python 走 WriteConsoleW、本来就是 UTF-8，所以等于没做事。实现与 core/fragcore.py
+    的同名函数一致（本脚本保持零依赖，所以复制了一份）。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
+
+
 def resolve(host):
     try:
         ip = socket.gethostbyname(host)
@@ -57,6 +73,7 @@ def build_client_hello(host):
 
 
 def main():
+    init_console()
     host = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_HOST
     if len(sys.argv) > 2:
         cuts = [int(x) for x in sys.argv[2].replace(" ", "").split(",") if x]

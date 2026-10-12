@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """验证 UDP 出网：DNS(53) / STUN(3478) / QUIC(443) —— 游戏本体走 UDP，需确认没被单独限制"""
-import sys, io, socket, struct, os, time
+import sys, socket, struct, os, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import dns_servers
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+from _common import dns_servers, init_console
+init_console()
 
 def dns_query(server, port=53, name="zzz.mihoyo.com", timeout=5):
     tid = os.urandom(2)

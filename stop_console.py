@@ -70,7 +70,25 @@ def kill(pid):
         _k32.CloseHandle(h)
 
 
+def init_console():
+    """把 stdout/stderr 切到 UTF-8，避免中文在「被重定向」时把脚本弄崩。
+
+    真控制台上 Python 走 WriteConsoleW、本来就是 UTF-8；但输出被重定向到管道/文件时，
+    编码会退化成系统 ANSI 代码页（英文 Windows 的 cp1252 编不了中文 → UnicodeEncodeError）。
+    实现与 core/fragcore.py 的同名函数一致。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
+
+
 def main():
+    init_console()
     pids = listening_pids(PORT)
     if not pids:
         print("没有进程在监听 %d，无需停止。" % PORT)

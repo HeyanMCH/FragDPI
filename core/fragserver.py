@@ -296,6 +296,7 @@ def banner():
 
 
 def main():
+    fc.init_console()          # 重定向输出时也别因为中文编码崩掉
     argv = sys.argv[1:]
     no_browser = "--no-browser" in argv
     autostart = "--autostart" in argv
