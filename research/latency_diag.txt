@@ -1,0 +1,16 @@
+﻿== A 组：被分片的海外主机（曾慢）==
+  act.hoyoverse.com                  1754 / 825 / 5807 ms
+  sdk.hoyoverse.com                  1749 / 8330 / 731 ms
+  api.steampowered.com               8001 / 8009 / 8017 ms
+  sg-public-api-static.hoyoverse.com 1973 / 581 / 449 ms
+== B 组：被分片的海外主机（原本没被封）==
+  playstation.com                    598 / 579 / 573 ms
+  xboxlive.com                       575 / 536 / 510 ms
+  epicgames.com                      545 / 510 / 517 ms
+== C 组：未被规则命中的海外主机（不分片，对照）==
+  www.cloudflare.com                 8025 / 8001 / 326 ms
+  www.microsoft.com                  509 / 496 / 502 ms
+== D 组：被分片的国内主机 ==
+  zzz.mihoyo.com                     35 / 41 / 43 ms
+  hk4e-api.mihoyo.com                521 / 186 / 220 ms
+  uu.163.com                         52 / 58 / 43 ms

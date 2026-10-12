@@ -1,0 +1,10 @@
+﻿launch: pid=5140 HasExited=False
+--- 纯直连测试（不带任何代理）---
+zzz.mihoyo.com : http_code=200 tls=0.080953s
+www.mihoyo.com : http_code=200
+baidu (非目标) : http_code=200
+
+[整理仓库时的说明]
+原文件在这里跟着一整份 zzz.mihoyo.com 首页的 HTML 抓取内容（约 20KB，还包含该站
+前端自己的 APM 配置与 token，以及因编码错误产生的乱码）。那部分只是为了取 http_code
+顺手抓下来的副作用，与本次测量结论无关，已在整理仓库时移除，只保留上面的结论行。

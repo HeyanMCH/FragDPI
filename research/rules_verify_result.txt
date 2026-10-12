@@ -1,0 +1,51 @@
+﻿实测被封域名合计: 36 个
+引擎: admin=True running=True mode=rules 规则13组
+  OK    act.hoyoverse.com                    11773ms
+  OK    act.mihoyo.com                        1165ms
+  OK    api.steampowered.com                  2982ms
+  OK    api-os-takumi.hoyoverse.com            147ms
+  OK    api-takumi.mihoyo.com                  277ms
+  OK    api-takumi-record.mihoyo.com           242ms
+  OK    battle.net                             140ms
+  OK    bbs.mihoyo.com                          62ms
+  OK    bbs-api.mihoyo.com                     230ms
+  OK    bh3.mihoyo.com                          65ms
+  OK    cdn.steamstatic.com                    182ms
+  OK    eu.battle.net                          745ms
+  OK    fastcdn.hoyoverse.com                   81ms
+  OK    fastcdn.mihoyo.com                      58ms
+  OK    hk4e-api.mihoyo.com                    215ms
+  OK    hk4e-api-os.hoyoverse.com              133ms
+  OK    hk4e-sdk.mihoyo.com                    243ms
+  OK    hk4e-sdk-os.mihoyo.com                 197ms
+  OK    hyp-api.mihoyo.com                      71ms
+  OK    passport-api.mihoyo.com                518ms
+  OK    pubgmobile.com                         582ms
+  OK    sdk.hoyoverse.com                     5556ms
+  OK    sdk-static.mihoyo.com                   79ms
+  OK    sg-public-api-static.hoyoverse.com     507ms
+  OK    sr.mihoyo.com                           42ms
+  OK    store.steampowered.com                 782ms
+  OK    uploadstatic.mihoyo.com                 36ms
+  OK    us.battle.net                          525ms
+  OK    user.mihoyo.com                         50ms
+  OK    uu.163.com                              41ms
+  OK    wd.mihoyo.com                           47ms
+  OK    webstatic.mihoyo.com                    59ms
+  OK    www.hoyoverse.com                       80ms
+  OK    www.mihoyo.com                          58ms
+  OK    ys.mihoyo.com                           27ms
+  OK    zzz.mihoyo.com                          40ms
+
+== 汇总: 36 / 36 通过 ==
+  对照 www.baidu.com                ok=True 334ms
+  对照 github.com                   ok=True 179ms
+  对照 www.taobao.com               ok=True 50ms
+统计: seen=6191 split=36 sent=6227
+规则命中:
+  游戏 · 米哈游系（绝区零/原神/星铁/崩3/未定）               hits=21
+  游戏 · 米哈游国际服 Hoyoverse                    hits=7
+  游戏 · 暴雪战网 Battle.net                     hits=3
+  游戏 · PUBG（绝地求生/和平精英国际）                   hits=1
+  游戏 · Steam 平台                            hits=3
+  游戏 · 加速器（网易UU/迅游/雷神/奇游）                  hits=1

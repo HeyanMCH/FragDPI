@@ -1,0 +1,32 @@
+# 统一换行符，避免 Windows / macOS / Linux 之间来回克隆时反复改动同一批文件。
+# 仓库里存 LF，检出到 Windows 时自动变成 CRLF。
+
+* text=auto eol=lf
+
+# ---------------------------------------------------------------- 必须 CRLF
+# cmd.exe 对 LF-only 的批处理容错性一般（尤其是带标签 goto / if( 块的脚本），
+# 所以 .cmd/.bat 强制检出为 CRLF。
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+# ---------------------------------------------------------------- 二进制
+# 这些文件绝不能做任何换行符 / 编码转换。
+*.dll  binary
+*.sys  binary
+*.exe  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.zip  binary
+
+# ---------------------------------------------------------------- 语言标注
+# 让 GitHub 正确识别语言与统计（也避免把 html 算成主要语言）。
+*.html linguist-language=HTML
+*.py   linguist-detectable=true
+
+# 把研究数据标成"文档"，不参与语言占比统计（否则 .json 会把仓库标成 JSON 项目）
+research/*.json linguist-documentation
+research/*.txt  linguist-documentation
+third_party/**  linguist-vendored

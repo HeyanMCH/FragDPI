@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# ---------------------------------------------------------------- 运行时产物
+# 控制台把用户配置（规则集 + 参数）写在这里，属本机私有，不入库
+core/fragconfig.json
+core/fragconfig.json.tmp
+*.tmp
+
+# 日志与临时输出
+*.log
+logs/
+tools/*.log
+research/*.log
+
+# ---------------------------------------------------------------- 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------- 本机私有材料
+# 你自己抓的原始数据、截图、笔记等放这里，不要提交
+scratch/
+private/
+not-in-repo/

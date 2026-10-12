@@ -1,0 +1,401 @@
+[
+ {
+  "host": "act.hoyoverse.com",
+  "dns": "108.139.200.56",
+  "ms": 351,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "act.mihoyo.com",
+  "dns": "61.164.114.229",
+  "ms": 103,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "api-os-takumi.hoyoverse.com",
+  "dns": "170.33.9.150",
+  "ms": 101,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "api-takumi-record.mihoyo.com",
+  "dns": "203.107.60.77",
+  "ms": 105,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "api-takumi.mihoyo.com",
+  "dns": "203.107.60.77",
+  "ms": 132,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "api.steampowered.com",
+  "dns": "23.62.226.123",
+  "ms": 216,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "battle.net",
+  "dns": "166.117.48.155",
+  "ms": 113,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "bbs-api.mihoyo.com",
+  "dns": "203.107.60.77",
+  "ms": 61,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "bbs.mihoyo.com",
+  "dns": "117.27.154.194",
+  "ms": 49,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "bh3.mihoyo.com",
+  "dns": "122.228.79.47",
+  "ms": 67,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "cdn.steamstatic.com",
+  "dns": "146.75.115.52",
+  "ms": 176,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "fastcdn.hoyoverse.com",
+  "dns": "18.65.14.67",
+  "ms": 63,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "fastcdn.mihoyo.com",
+  "dns": "61.164.114.229",
+  "ms": 34,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "hk4e-api-os.hoyoverse.com",
+  "dns": "170.33.9.150",
+  "ms": 123,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "hk4e-api.mihoyo.com",
+  "dns": "203.107.62.242",
+  "ms": 104,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "hk4e-sdk-os.mihoyo.com",
+  "dns": "3.170.221.69",
+  "ms": 359,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "hk4e-sdk.mihoyo.com",
+  "dns": "203.107.63.13",
+  "ms": 131,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "hyp-api.mihoyo.com",
+  "dns": "122.225.209.25",
+  "ms": 100,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "passport-api.mihoyo.com",
+  "dns": "203.107.60.62",
+  "ms": 103,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "sdk-static.mihoyo.com",
+  "dns": "117.27.154.195",
+  "ms": 65,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "sdk.hoyoverse.com",
+  "dns": "108.139.200.11",
+  "ms": 389,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "sg-public-api-static.hoyoverse.com",
+  "dns": "216.137.53.95",
+  "ms": 267,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "sr.mihoyo.com",
+  "dns": "61.164.114.227",
+  "ms": 33,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "store.steampowered.com",
+  "dns": "2.23.246.108",
+  "ms": 279,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "uploadstatic.mihoyo.com",
+  "dns": "122.228.79.43",
+  "ms": 60,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "user.mihoyo.com",
+  "dns": "60.188.96.141",
+  "ms": 101,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "uu.163.com",
+  "dns": "60.188.74.22",
+  "ms": 55,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "wd.mihoyo.com",
+  "dns": "60.188.78.20",
+  "ms": 80,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "webstatic.mihoyo.com",
+  "dns": "60.188.78.23",
+  "ms": 19,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "www.hoyoverse.com",
+  "dns": "18.65.14.45",
+  "ms": 122,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "www.mihoyo.com",
+  "dns": "122.228.79.44",
+  "ms": 99,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "ys.mihoyo.com",
+  "dns": "60.188.78.24",
+  "ms": 35,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "zzz.mihoyo.com",
+  "dns": "61.164.114.228",
+  "ms": 104,
+  "verdict": "RST",
+  "detail": "ConnectionResetError(注入RST)"
+ },
+ {
+  "host": "steamcommunity.com",
+  "dns": "69.171.224.40",
+  "ms": 7027,
+  "verdict": "TCP_FAIL",
+  "detail": "TimeoutError: timed out"
+ },
+ {
+  "host": "api-takumi.hoyoverse.com",
+  "dns": null,
+  "ms": 1076,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "cloud.mihoyo.com",
+  "dns": null,
+  "ms": 50,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "mi18n.mihoyo.com",
+  "dns": null,
+  "ms": 30,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "nintendo.net",
+  "dns": null,
+  "ms": 3142,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "pc-static.mihoyo.com",
+  "dns": null,
+  "ms": 35,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "sg-hoyolab.com",
+  "dns": null,
+  "ms": 1077,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "blizzard.com",
+  "dns": "166.117.48.155",
+  "ms": 3472,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "ea.com",
+  "dns": "2.23.232.189",
+  "ms": 1176,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "epicgames.com",
+  "dns": "32.194.195.250",
+  "ms": 525,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "github.com",
+  "dns": "20.205.243.166",
+  "ms": 179,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "hoyolab.com",
+  "dns": "13.226.144.41",
+  "ms": 1639,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "leagueoflegends.com",
+  "dns": "32.189.154.235",
+  "ms": 3774,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "minecraft.net",
+  "dns": "150.171.110.136",
+  "ms": 3274,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "miyoushe.com",
+  "dns": "61.164.114.234",
+  "ms": 64,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "mojang.com",
+  "dns": "150.171.110.136",
+  "ms": 174,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "playstation.com",
+  "dns": "54.67.63.115",
+  "ms": 3768,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "pubg.com",
+  "dns": "52.84.150.63",
+  "ms": 133,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "riotgames.com",
+  "dns": "23.211.139.205",
+  "ms": 360,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "roblox.com",
+  "dns": "128.116.120.3",
+  "ms": 243,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "store.epicgames.com",
+  "dns": "104.18.2.64",
+  "ms": 342,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "ubisoft.com",
+  "dns": "143.204.226.28",
+  "ms": 728,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "www.baidu.com",
+  "dns": "180.101.49.44",
+  "ms": 353,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "xboxlive.com",
+  "dns": "20.112.250.133",
+  "ms": 438,
+  "verdict": "OK",
+  "detail": ""
+ }
+]

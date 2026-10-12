@@ -1,0 +1,95 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- 单元测试
+  # 核心逻辑（SNI 解析 / 规则匹配 / 分片与还原 / seq 连续性）全是纯计算，
+  # 不加载驱动、不需要管理员，所以 Linux 上也能跑。
+  unit:
+    name: unit · ${{ matrix.os }} · py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.8', '3.10', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # 项目没有任何第三方依赖，不需要 pip install
+      - name: Show interpreter
+        run: python -c "import sys, platform; print(sys.version); print(platform.platform())"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  # ---------------------------------------------------------------- 离线算法验证
+  # tools/fragdpi.py --packettest 会真的加载捆绑的 WinDivert.dll，调用
+  # WinDivertHelperCalcChecksums 复算校验和 —— 这一步是用户态计算，不需要驱动
+  # 也不需要管理员，所以可以在 CI 里跑，用来验证第三方二进制完好可用。
+  packettest:
+    name: packettest · windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify bundled WinDivert binaries
+        shell: pwsh
+        run: |
+          $dir = "third_party/windivert"
+          foreach ($f in @("WinDivert.dll", "WinDivert64.sys", "LICENSE.LGPL-3.0.txt")) {
+            if (-not (Test-Path "$dir/$f")) { throw "缺少 $dir/$f" }
+          }
+          $h = (Get-FileHash "$dir/WinDivert.dll" -Algorithm SHA256).Hash.ToLower()
+          Write-Host "WinDivert.dll SHA256 = $h"
+          if ($h -ne "c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2") {
+            throw "WinDivert.dll 哈希与 NOTICE 记录的不一致，请确认是否是官方发行版"
+          }
+
+      - name: Offline fragmentation + checksum test
+        run: python tools/fragdpi.py --packettest
+
+  # ---------------------------------------------------------------- 可导入性
+  # 保证所有脚本在任何平台都能被编译/导入（Windows 专有 API 都藏在函数内部）。
+  compile:
+    name: compileall · ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile every Python file
+        run: python -m compileall -q core tools research tests
+
+      - name: Core module imports on non-Windows
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "core")
+          import fragcore as fc
+          # 非 Windows 平台上，WinDivert 相关代码只应"用到时才报错"
+          hello = fc.parse_sni(b"\x16\x03\x01\x00\x00")
+          assert hello == (None, None, None)
+          assert fc.MEASURED_DEVICE_THRESHOLD == 114
+          assert fc.Params().min_cut > fc.MEASURED_DEVICE_THRESHOLD
+          print("fragcore import + pure-python paths OK")
+          PY

@@ -1,0 +1,387 @@
+[
+ {
+  "host": "eu.battle.net",
+  "dns": "166.117.30.132",
+  "ms": 508,
+  "verdict": "RST",
+  "detail": "ConnectionResetError"
+ },
+ {
+  "host": "pubgmobile.com",
+  "dns": "108.156.39.56",
+  "ms": 442,
+  "verdict": "RST",
+  "detail": "ConnectionResetError"
+ },
+ {
+  "host": "store.steampowered.com",
+  "dns": "2.23.246.108",
+  "ms": 275,
+  "verdict": "RST",
+  "detail": "ConnectionResetError"
+ },
+ {
+  "host": "us.battle.net",
+  "dns": "166.117.214.166",
+  "ms": 398,
+  "verdict": "RST",
+  "detail": "ConnectionResetError"
+ },
+ {
+  "host": "uu.163.com",
+  "dns": "60.188.74.22",
+  "ms": 84,
+  "verdict": "RST",
+  "detail": "ConnectionResetError"
+ },
+ {
+  "host": "uu.163.com",
+  "dns": "60.188.74.22",
+  "ms": 16,
+  "verdict": "RST",
+  "detail": "ConnectionResetError"
+ },
+ {
+  "host": "changyou.com",
+  "dns": "180.163.29.151",
+  "ms": 3261,
+  "verdict": "TCP_FAIL",
+  "detail": "ConnectionRefusedError:[WinError 10061] 無法連線，因為目標電腦拒絕連線。"
+ },
+ {
+  "host": "sdo.com",
+  "dns": "121.4.16.170",
+  "ms": 2104,
+  "verdict": "TCP_FAIL",
+  "detail": "ConnectionRefusedError:[WinError 10061] 無法連線，因為目標電腦拒絕連線。"
+ },
+ {
+  "host": "steamcommunity.com",
+  "dns": "69.171.224.40",
+  "ms": 7016,
+  "verdict": "TCP_FAIL",
+  "detail": "TimeoutError:timed out"
+ },
+ {
+  "host": "blzstatic.com",
+  "dns": null,
+  "ms": 97,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "nintendo.net",
+  "dns": null,
+  "ms": 22,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "papergames.cn",
+  "dns": null,
+  "ms": 1166,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "playstation.net",
+  "dns": null,
+  "ms": 1130,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "smoba.qq.com",
+  "dns": null,
+  "ms": 61,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "steamcontent.com",
+  "dns": null,
+  "ms": 20,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "steamserver.net",
+  "dns": null,
+  "ms": 20,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "steamstatic.com",
+  "dns": null,
+  "ms": 86,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "steamusercontent.com",
+  "dns": null,
+  "ms": 257,
+  "verdict": "DNS_FAIL",
+  "detail": "gaierror"
+ },
+ {
+  "host": "4399.com",
+  "dns": "129.211.129.109",
+  "ms": 84,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "baidu.com",
+  "dns": "124.237.177.164",
+  "ms": 137,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "biubiu.com",
+  "dns": "76.223.54.146",
+  "ms": 3775,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "blizzard.com",
+  "dns": "166.117.48.155",
+  "ms": 164,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "cf.qq.com",
+  "dns": "183.131.191.216",
+  "ms": 115,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "dnf.qq.com",
+  "dns": "183.131.191.216",
+  "ms": 115,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "epicgames.dev",
+  "dns": "44.209.244.6",
+  "ms": 596,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "game.163.com",
+  "dns": "42.186.160.148",
+  "ms": 144,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "game.qq.com",
+  "dns": "183.131.191.216",
+  "ms": 120,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "honorofkings.com",
+  "dns": "43.174.128.71",
+  "ms": 536,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "hoyolab.com",
+  "dns": "13.226.144.41",
+  "ms": 500,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "hypergryph.com",
+  "dns": "110.75.170.150",
+  "ms": 90,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "jx3.xoyo.com",
+  "dns": "122.228.17.186",
+  "ms": 58,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "kurobbs.com",
+  "dns": "106.14.182.151",
+  "ms": 89,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "kurogame.com",
+  "dns": "106.14.182.151",
+  "ms": 92,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "leigod.com",
+  "dns": "61.160.202.77",
+  "ms": 3166,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "lilithgames.com",
+  "dns": "47.102.49.47",
+  "ms": 1168,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "lol.qq.com",
+  "dns": "183.131.191.216",
+  "ms": 120,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "miyoushe.com",
+  "dns": "61.164.114.234",
+  "ms": 61,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "music.163.com",
+  "dns": "122.228.29.101",
+  "ms": 152,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "netease.com",
+  "dns": "115.236.118.54",
+  "ms": 94,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "neteasegames.com",
+  "dns": "34.36.74.73",
+  "ms": 1243,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "nintendo.com",
+  "dns": "192.159.190.35",
+  "ms": 808,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "pvp.qq.com",
+  "dns": "183.131.191.216",
+  "ms": 119,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "qiyou.com",
+  "dns": "8.134.238.9",
+  "ms": 3176,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "riotgames.com",
+  "dns": "23.211.139.205",
+  "ms": 420,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "speed.qq.com",
+  "dns": "115.238.157.216",
+  "ms": 163,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "steam-chat.com",
+  "dns": "2.23.245.19",
+  "ms": 768,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "steamgames.com",
+  "dns": "184.25.219.75",
+  "ms": 975,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "unrealengine.com",
+  "dns": "100.60.102.238",
+  "ms": 575,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "valorant.com",
+  "dns": "15.197.225.128",
+  "ms": 1874,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "wanmei.com",
+  "dns": "221.228.74.210",
+  "ms": 3915,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "www.163.com",
+  "dns": "122.228.115.35",
+  "ms": 99,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "xbox.com",
+  "dns": "20.70.246.20",
+  "ms": 342,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "xoyo.com",
+  "dns": "203.107.84.110",
+  "ms": 420,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "xunyou.com",
+  "dns": "123.206.82.65",
+  "ms": 188,
+  "verdict": "OK",
+  "detail": ""
+ },
+ {
+  "host": "ztgame.com",
+  "dns": "1.117.135.35",
+  "ms": 3123,
+  "verdict": "OK",
+  "detail": ""
+ }
+]

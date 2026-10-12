@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRAG//DPI 控制台</title>
+<style>
+/* ================= 变量 ================= */
+:root{
+  --bg:#0b0b0d; --bg2:#0f0f13; --panel:#14141a; --panel2:#1a1a22;
+  --line:#282833; --line2:#3b3b49;
+  --acc:#eaff2e; --acc2:#c8dd00; --accglow:rgba(234,255,46,.28);
+  --ink:#ececf1; --muted:#82828f; --muted2:#5c5c69;
+  --ok:#35e07a; --warn:#ffb020; --bad:#ff4a5a; --info:#4fc3ff;
+  --disp:"Bahnschrift","DIN Alternate","Arial Narrow","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+  --mono:"Cascadia Mono","Consolas","DejaVu Sans Mono",monospace;
+  --body:"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--body);
+  font-size:13.5px; line-height:1.55; overflow-x:hidden;
+  background-image:
+    radial-gradient(circle at 15% 0%,rgba(234,255,46,.05),transparent 42%),
+    linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:auto,44px 44px,44px 44px;
+}
+/* 扫描线 */
+body::after{
+  content:""; position:fixed; inset:0; z-index:9999; pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px);
+  mix-blend-mode:screen;
+}
+::selection{background:var(--acc);color:#000}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:#0e0e12}
+::-webkit-scrollbar-thumb{background:#33333f;border:2px solid #0e0e12}
+::-webkit-scrollbar-thumb:hover{background:var(--acc2)}
+
+/* ================= 顶栏 ================= */
+.topbar{
+  display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  padding:14px 22px;background:linear-gradient(180deg,#131318,#0c0c10);
+  border-bottom:1px solid var(--line);position:relative;
+}
+.topbar::before{
+  content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;
+  background:repeating-linear-gradient(115deg,var(--acc) 0 14px,transparent 14px 28px);
+  opacity:.85;
+}
+.brand{display:flex;align-items:baseline;gap:11px;min-width:0}
+.brand h1{
+  font-family:var(--disp);font-size:27px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--acc);
+  text-shadow:0 0 22px var(--accglow),2px 2px 0 rgba(0,0,0,.6);
+  white-space:nowrap;
+}
+.brand .sub{
+  font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  letter-spacing:.16em;text-transform:uppercase;white-space:nowrap
+}
+.pills{display:flex;gap:9px;margin-left:auto;flex-wrap:wrap}
+.pill{
+  display:flex;align-items:center;gap:8px;padding:6px 13px;
+  background:#16161d;border:1px solid var(--line);border-left:3px solid var(--muted2);
+  font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,0 100%);
+}
+.pill b{color:var(--ink);font-weight:600}
+.pill.good{border-left-color:var(--ok)} .pill.good b{color:var(--ok)}
+.pill.bad{border-left-color:var(--bad)} .pill.bad b{color:var(--bad)}
+.pill.acc{border-left-color:var(--acc)} .pill.acc b{color:var(--acc)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);flex:none}
+.dot.on{background:var(--ok);box-shadow:0 0 9px var(--ok);animation:pulse 1.5s infinite}
+.dot.off{background:#4a4a56}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.82)}}
+
+/* ================= 布局 ================= */
+.wrap{max-width:1620px;margin:0 auto;padding:20px 22px 60px}
+.grid{display:grid;grid-template-columns:352px minmax(0,1fr);gap:18px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+@media(max-width:1080px){.grid{grid-template-columns:1fr}}
+
+/* ================= 面板 ================= */
+.panel{
+  background:linear-gradient(160deg,var(--panel),#111117);
+  border:1px solid var(--line);position:relative;padding:16px 17px 22px;
+  clip-path:polygon(0 0,calc(100% - 15px) 0,100% 15px,100% 100%,15px 100%,0 calc(100% - 15px));
+  box-shadow:0 8px 26px rgba(0,0,0,.42);
+}
+.panel::before{ /* 左上角刻线 */
+  content:"";position:absolute;top:9px;left:9px;width:15px;height:15px;
+  border-top:2px solid var(--acc);border-left:2px solid var(--acc);opacity:.5;
+}
+.panel-hd{
+  display:flex;align-items:center;gap:10px;margin-bottom:14px;
+  padding-bottom:10px;border-bottom:1px solid var(--line);
+}
+.panel-hd h2{
+  font-family:var(--disp);font-size:15px;font-weight:700;letter-spacing:.13em;
+  text-transform:uppercase;
+}
+.panel-hd .idx{
+  font-family:var(--mono);font-size:10px;color:#000;background:var(--acc);
+  padding:1px 6px;font-weight:700;letter-spacing:.06em;
+}
+.panel-hd .tail{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+
+/* ================= 模式卡 ================= */
+.modes{display:flex;flex-direction:column;gap:9px}
+.mode{
+  display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;
+  padding:11px 13px;background:var(--panel2);border:1px solid var(--line);
+  cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%;
+  transition:.16s;position:relative;overflow:hidden;
+  clip-path:polygon(0 0,calc(100% - 11px) 0,100% 11px,100% 100%,0 100%);
+}
+.mode:hover{border-color:var(--line2);background:#1f1f28;transform:translateX(3px)}
+.mode .num{
+  font-family:var(--disp);font-size:22px;font-weight:700;color:var(--muted2);
+  text-align:center;line-height:1;transition:.16s
+}
+.mode .nm{display:block;font-family:var(--disp);font-size:14.5px;font-weight:700;letter-spacing:.06em}
+.mode .ds{display:block;font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:3px}
+.mode .tick{
+  font-family:var(--mono);font-size:10px;color:var(--muted2);
+  border:1px solid var(--line2);padding:2px 7px;letter-spacing:.08em
+}
+.mode.sel{border-color:var(--acc);background:linear-gradient(90deg,rgba(234,255,46,.13),rgba(234,255,46,.02))}
+.mode.sel::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc);
+  box-shadow:0 0 12px var(--accglow)
+}
+.mode.sel .num{color:var(--acc)}
+.mode.sel .nm{color:var(--acc)}
+.mode.sel .tick{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
+.mode.sel.global{border-color:var(--warn);background:linear-gradient(90deg,rgba(255,176,32,.13),rgba(255,176,32,.02))}
+.mode.sel.global::before{background:var(--warn);box-shadow:0 0 12px rgba(255,176,32,.4)}
+.mode.sel.global .num,.mode.sel.global .nm{color:var(--warn)}
+.mode.sel.global .tick{background:var(--warn);border-color:var(--warn)}
+
+/* ================= 表单控件 ================= */
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{
+  font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.11em;text-transform:uppercase
+}
+input[type=text],input[type=number],select{
+  background:#0d0d11;border:1px solid var(--line2);color:var(--ink);
+  font-family:var(--mono);font-size:12.5px;padding:7px 9px;width:100%;
+  outline:none;transition:.15s
+}
+input:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 2px var(--accglow);background:#101015}
+select{cursor:pointer}
+.params{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.hint{font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:9px;line-height:1.6}
+
+/* 按钮 */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 16px;border:1px solid var(--line2);background:#1b1b23;color:var(--ink);
+  font-family:var(--disp);font-size:12.5px;font-weight:700;letter-spacing:.11em;
+  text-transform:uppercase;cursor:pointer;transition:.15s;
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px));
+}
+.btn:hover:not(:disabled){background:#252530;border-color:var(--line2);transform:translateY(-1px)}
+.btn:active:not(:disabled){transform:translateY(0)}
+.btn:disabled{opacity:.34;cursor:not-allowed}
+.btn.go{background:var(--acc);border-color:var(--acc);color:#000}
+.btn.go:hover:not(:disabled){background:#f4ff5c;box-shadow:0 0 20px var(--accglow)}
+.btn.stop{border-color:#5a2029;background:#2a1418;color:#ff8b96}
+.btn.stop:hover:not(:disabled){background:#3a1a20;color:#ffa8b0}
+.btn.sm{padding:5px 10px;font-size:10.5px;letter-spacing:.07em}
+.btn.ghost{background:transparent}
+.row{display:flex;gap:9px;flex-wrap:wrap}
+.actions{display:flex;flex-direction:column;gap:10px}
+.actions .row .btn{flex:1}
+
+/* ================= 统计 ================= */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+@media(max-width:820px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{
+  background:linear-gradient(155deg,var(--panel2),#131319);border:1px solid var(--line);
+  padding:11px 13px;position:relative;overflow:hidden;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%);
+}
+.tile .k{
+  font-family:var(--mono);font-size:9.5px;color:var(--muted);
+  letter-spacing:.13em;text-transform:uppercase
+}
+.tile .v{
+  font-family:var(--disp);font-size:27px;font-weight:700;line-height:1.15;
+  margin-top:3px;letter-spacing:.02em
+}
+.tile.hl .v{color:var(--acc);text-shadow:0 0 18px var(--accglow)}
+.tile .v.txt{font-family:var(--mono);font-size:14px;padding-top:7px;word-break:break-all}
+.tile::after{
+  content:"";position:absolute;right:-18px;top:-18px;width:44px;height:44px;
+  border:1px solid var(--line);transform:rotate(45deg)
+}
+
+/* ================= 规则表 ================= */
+.rules{display:flex;flex-direction:column;gap:7px;max-height:474px;overflow-y:auto;padding-right:4px}
+.rule{
+  display:grid;grid-template-columns:38px minmax(0,1.25fr) 62px minmax(0,1.6fr) 54px 74px;
+  gap:10px;align-items:center;padding:9px 11px;background:var(--panel2);
+  border:1px solid var(--line);border-left:3px solid var(--line2);transition:.15s;
+}
+.rule:hover{background:#1f1f28;border-color:var(--line2)}
+.rule.on{border-left-color:var(--acc)}
+.rule.hit{border-left-color:var(--ok)}
+.rule .rn{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rule.off .rn{color:var(--muted);text-decoration:line-through}
+.rule .rt{
+  font-family:var(--mono);font-size:9.5px;text-align:center;padding:2px 0;letter-spacing:.05em;
+  border:1px solid var(--line2);color:var(--muted)
+}
+.rule .rt.suffix{border-color:#2c4a3a;color:#6fd39a;background:rgba(53,224,122,.07)}
+.rule .rt.keyword{border-color:#4a3f2c;color:#e0b96f;background:rgba(255,176,32,.07)}
+.rule .rv{
+  font-family:var(--mono);font-size:11.5px;color:#b9c4d4;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap
+}
+.rule .rh{
+  font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)
+}
+.rule.hit .rh{color:var(--ok);font-weight:700}
+.rule .ra{display:flex;gap:5px;justify-content:flex-end}
+.iconb{
+  width:26px;height:24px;display:grid;place-items:center;background:#20202a;
+  border:1px solid var(--line2);color:var(--muted);cursor:pointer;font-size:11px;
+  transition:.14s;font-family:var(--mono)
+}
+.iconb:hover{background:#2b2b38;color:var(--ink)}
+.iconb.del:hover{background:#3a1a20;border-color:#5a2029;color:#ff8b96}
+/* 开关 */
+.sw{position:relative;width:36px;height:20px;flex:none;cursor:pointer}
+.sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.sw i{
+  position:absolute;inset:0;background:#242430;border:1px solid var(--line2);
+  transition:.18s;display:block
+}
+.sw i::after{
+  content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:#55555f;transition:.18s
+}
+.sw input:checked + i{background:rgba(234,255,46,.2);border-color:var(--acc)}
+.sw input:checked + i::after{left:18px;background:var(--acc);box-shadow:0 0 9px var(--accglow)}
+@media(max-width:900px){
+  .rule{grid-template-columns:34px 1fr 56px;grid-auto-rows:auto}
+  .rule .rv{grid-column:1/-1;padding-left:2px}
+  .rule .rh{text-align:left}
+  .rule .ra{grid-column:1/-1;justify-content:flex-start}
+}
+
+.editor{
+  margin-top:14px;padding:13px;background:#101016;border:1px solid var(--line);
+  border-top:2px solid var(--line2);
+}
+.editor.editing{border-top-color:var(--warn)}
+.editor-hd{
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:9px
+}
+.editor-hd .tag{background:var(--warn);color:#000;padding:1px 7px;font-weight:700}
+.editor .grid2{display:grid;grid-template-columns:1fr 116px;gap:11px}
+.editor .grid2 + .grid2{margin-top:11px}
+.editor .btns{display:flex;gap:9px;margin-top:12px}
+
+/* ================= 日志 ================= */
+.log{
+  height:296px;overflow-y:auto;background:#08080b;border:1px solid var(--line);
+  padding:9px 11px;font-family:var(--mono);font-size:11.5px;line-height:1.75
+}
+.log .ln{display:flex;gap:9px;padding:1px 0;border-bottom:1px solid rgba(255,255,255,.028)}
+.log .tm{color:var(--muted2);flex:none}
+.log .lv{flex:none;width:56px;text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+.log .tx{word-break:break-all;color:#c6c6d0}
+.log .lv.info{color:var(--info)} .log .lv.split{color:var(--acc);font-weight:700}
+.log .lv.warn{color:var(--warn)} .log .lv.error{color:var(--bad);font-weight:700}
+.log .lv.selftest{color:#c08cff}
+.log .ln:has(.lv.error) .tx{color:#ffbcc3}
+.log .ln:has(.lv.split) .tx{color:#eaffb0}
+.log .empty{color:var(--muted2);text-align:center;padding:26px 0}
+
+/* ================= 自检结果 ================= */
+.st{
+  margin-top:11px;padding:11px 13px;background:#101016;border:1px solid var(--line);
+  border-left:3px solid var(--muted2);font-family:var(--mono);font-size:11.5px;line-height:1.7
+}
+.st.ok{border-left-color:var(--ok)} .st.bad{border-left-color:var(--bad)}
+.st .head{display:flex;align-items:center;gap:9px;margin-bottom:5px}
+.st .head b{font-family:var(--disp);font-size:13px;letter-spacing:.06em}
+.st.ok .head b{color:var(--ok)} .st.bad .head b{color:var(--bad)}
+.st .kv{color:var(--muted)} .st .kv i{color:var(--ink);font-style:normal}
+
+/* ================= 离线预览条 ================= */
+.offlinebar{
+  display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+  padding:10px 22px;font-family:var(--mono);font-size:11.5px;
+  background:repeating-linear-gradient(115deg,rgba(234,255,46,.14) 0 12px,rgba(0,0,0,0) 12px 24px),#17170d;
+  border-bottom:1px solid var(--acc2);color:#d6dd8f;
+}
+.offlinebar b{color:var(--acc);font-family:var(--disp);letter-spacing:.11em;text-transform:uppercase}
+.offlinebar .mono{color:#fff;background:#000;padding:1px 6px;border:1px solid #3a3a20}
+/* 预览模式下禁用操作控件 */
+body.demo .modes,body.demo .rules,body.demo .editor .btns,
+body.demo #b-saveparams,body.demo #b-selftest,body.demo #b-start,body.demo #b-stop,
+body.demo .iconb,body.demo .sw{pointer-events:none}
+body.demo #b-start,body.demo #b-stop,body.demo #b-saveparams,body.demo #b-selftest,
+body.demo .iconb,body.demo .sw{opacity:.42}
+body.demo .editor{position:relative}
+body.demo .editor::after{
+  content:"预览模式 · 不可编辑";position:absolute;right:12px;top:9px;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--warn);
+  border:1px solid var(--warn);padding:1px 7px;background:#1a1408
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>FRAG//DPI</h1>
+    <div class="sub">first-packet fragmentation console</div>
+  </div>
+  <div class="pills">
+    <div class="pill" id="p-admin"><span class="dot" id="d-admin"></span>驱动权限 <b id="t-admin">?</b></div>
+    <div class="pill" id="p-engine"><span class="dot" id="d-engine"></span>拦截引擎 <b id="t-engine">?</b></div>
+    <div class="pill acc">模式 <b id="t-mode">?</b></div>
+    <div class="pill">运行 <b id="t-uptime">--</b></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- ============ 左列 ============ -->
+    <div class="col">
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">01</span><h2>工作模式</h2></div>
+        <div class="modes" id="modes"></div>
+        <div class="hint">「规则模式」只处理命中规则的目标；「全局模式」对所有 TLS 443 首包分片（覆盖面最大，代价是每个连接多一个包）。</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">02</span><h2>分片参数</h2>
+          <span class="tail" id="t-threshold">设备阈值 114B</span></div>
+        <div class="params">
+          <div class="field"><label>守卫 guard (B)</label><input type="number" id="p-guard" min="0" max="60"></div>
+          <div class="field"><label>最小切点 min-cut</label><input type="number" id="p-mincut" min="0" max="1400"></div>
+          <div class="field"><label>MTU</label><input type="number" id="p-mtu" min="576" max="9000"></div>
+          <div class="field"><label>TCP 端口</label><input type="number" id="p-port" min="1" max="65535"></div>
+        </div>
+        <div class="row" style="margin-top:12px"><button class="btn sm" id="b-saveparams">保存参数</button></div>
+        <div class="hint">
+          切点 = 域名起始位置 − guard，且不低于 min-cut。<br>
+          首段必须 ≥ 114B 且不含完整域名，否则设备会把两段攒起来照样识别。
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">03</span><h2>运行控制</h2></div>
+        <div class="actions">
+          <div class="row">
+            <button class="btn go" id="b-start">▶ 启动拦截</button>
+            <button class="btn stop" id="b-stop" disabled>■ 停止</button>
+          </div>
+          <div class="field" style="margin-top:2px">
+            <label>自检目标（纯直连，不走代理）</label>
+            <div class="row" style="gap:8px;flex-wrap:nowrap">
+              <input type="text" id="p-host" value="zzz.mihoyo.com">
+              <button class="btn sm" id="b-selftest" style="flex:none">自检</button>
+            </div>
+          </div>
+          <div class="st" id="st" style="display:none"></div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 右列 ============ -->
+    <div class="col">
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">04</span><h2>实时统计</h2>
+          <span class="tail" id="t-since">—</span></div>
+        <div class="tiles">
+          <div class="tile"><div class="k">已见报文</div><div class="v" id="s-seen">0</div></div>
+          <div class="tile hl"><div class="k">已触发分片</div><div class="v" id="s-split">0</div></div>
+          <div class="tile"><div class="k">已重注入</div><div class="v" id="s-sent">0</div></div>
+          <div class="tile"><div class="k">最近命中域名</div><div class="v txt" id="s-domain">—</div></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">05</span><h2>规则系统</h2>
+          <span class="tail" id="t-rulecount">0 条</span></div>
+        <div class="rules" id="rules"></div>
+
+        <div class="editor" id="editor">
+          <div class="editor-hd" id="editor-hd">新建规则</div>
+          <div class="grid2">
+            <div class="field"><label>规则名称</label><input type="text" id="r-name" placeholder="例如：游戏 · 米哈游系"></div>
+            <div class="field"><label>类型</label>
+              <select id="r-type">
+                <option value="suffix">suffix 域名后缀</option>
+                <option value="keyword">keyword 关键词</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>匹配内容（多个用英文逗号分隔）</label>
+              <input type="text" id="r-value" placeholder="mihoyo.com,hoyoverse.com"></div>
+            <div class="field"><label>启用</label>
+              <select id="r-enabled"><option value="1">启用</option><option value="0">停用</option></select>
+            </div>
+          </div>
+          <div class="btns">
+            <button class="btn go sm" id="b-rulesave">添加规则</button>
+            <button class="btn sm ghost" id="b-rulecancel" style="display:none">取消编辑</button>
+            <button class="btn sm ghost" id="b-rulereset" style="margin-left:auto">载入内置游戏预设</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><span class="idx">06</span><h2>事件日志</h2>
+          <span class="tail"><button class="btn sm ghost" id="b-clearlog">清空</button></span></div>
+        <div class="log" id="log"><div class="empty">等待事件…</div></div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let STATE = null, LAST_EID = 0, EDIT_IDX = null, busy = false;
+let DEMO = false;
+
+/* ---------- 离线预览用的示例数据（仅在连不上本地引擎时使用） ---------- */
+const DEMO_STATE = {
+  app:'fragdpi-console', admin:true, running:true, uptime:447, mode:'rules',
+  rules:[
+    {name:'游戏 · 米哈游系（绝区零/原神/星铁/崩3/未定）',type:'suffix',value:'mihoyo.com',enabled:true,hits:128},
+    {name:'游戏 · 米哈游国际服 Hoyoverse',type:'suffix',value:'hoyoverse.com',enabled:true,hits:23},
+    {name:'游戏 · 暴雪战网 Battle.net',type:'suffix',value:'battle.net,blizzard.com,blzstatic.com',enabled:true,hits:11},
+    {name:'游戏 · PUBG（绝地求生/和平精英国际）',type:'suffix',value:'pubgmobile.com,pubg.com',enabled:true,hits:4},
+    {name:'游戏 · Steam 平台',type:'suffix',value:'steampowered.com,steamstatic.com,steamcommunity.com,steamcontent.com,steamusercontent.com,steamgames.com',enabled:true,hits:37},
+    {name:'游戏 · 加速器（网易UU/迅游/雷神/奇游）',type:'suffix',value:'uu.163.com,xunyou.com,leigod.com,qiyou.com,biubiu.com',enabled:true,hits:6},
+    {name:'游戏 · 米哈游社区（米游社 / HoYoLAB）',type:'suffix',value:'miyoushe.com,hoyolab.com',enabled:true,hits:0},
+    {name:'游戏 · 腾讯系',type:'suffix',value:'game.qq.com,lol.qq.com,dnf.qq.com,cf.qq.com,pvp.qq.com,speed.qq.com,honorofkings.com',enabled:true,hits:0},
+    {name:'游戏 · 网易系',type:'suffix',value:'game.163.com,neteasegames.com',enabled:true,hits:0},
+    {name:'游戏 · 其他国内厂商',type:'suffix',value:'kurogame.com,kurobbs.com,hypergryph.com,xoyo.com,jx3.xoyo.com,wanmei.com,4399.com,lilithgames.com,ztgame.com,sdo.com,changyou.com',enabled:true,hits:0},
+    {name:'游戏 · 主机与海外平台',type:'suffix',value:'playstation.com,playstation.net,xboxlive.com,xbox.com,epicgames.com,riotgames.com,leagueoflegends.com,valorant.com,nintendo.com,minecraft.net,mojang.com,roblox.com,unrealengine.com',enabled:true,hits:0},
+    {name:'关键词兜底（SNI 被截断时按原始字节匹配）',type:'keyword',value:'mihoyo,hoyoverse,steampowered,steamstatic,battle.net,pubgmobile',enabled:true,hits:9},
+    {name:'示例 · 自定义域名（默认停用）',type:'suffix',value:'example.com',enabled:false,hits:0}
+  ],
+  params:{guard:6,min_cut:124,mtu:1500,port:443},
+  stats:{seen:31842,split:178,sent:31998,last_domain:'zzz.mihoyo.com'},
+  device_threshold:114,
+  last_selftest:{host:'zzz.mihoyo.com',ok:true,ms:81,ip:'61.164.114.228',proxy_used:false,at:'16:12:04'},
+  last_event_id:6
+};
+const DEMO_EVENTS = [
+  {id:1,t:'16:11:52',level:'info',    text:'拦截已启动 · 模式 rules · 端口 443 · guard=6 · min-cut=124'},
+  {id:2,t:'16:11:53',level:'split',   text:'zzz.mihoyo.com  首段 124B  命中规则：游戏 · 米哈游系（绝区零/原神/星铁/崩3/未定）'},
+  {id:3,t:'16:11:55',level:'split',   text:'hk4e-api.mihoyo.com  首段 124B  命中规则：游戏 · 米哈游系（绝区零/原神/星铁/崩3/未定）'},
+  {id:4,t:'16:12:01',level:'split',   text:'store.steampowered.com  首段 124B  命中规则：游戏 · Steam 平台'},
+  {id:5,t:'16:12:02',level:'split',   text:'eu.battle.net  首段 124B  命中规则：游戏 · 暴雪战网 Battle.net'},
+  {id:6,t:'16:12:04',level:'selftest',text:'自检 zzz.mihoyo.com: 直连成功 42ms ✅'}
+];
+function showOfflineBar(on){
+  let el = $('offlinebar');
+  if(on && !el){
+    el = document.createElement('div'); el.id='offlinebar'; el.className='offlinebar';
+    el.innerHTML = '<b>界面预览模式</b> 未连接到本地引擎 ' +
+      '<span class="mono">http://127.0.0.1:8899</span> · 当前显示的是示例数据，控件不可操作。' +
+      '请双击 <span class="mono">start_console.cmd</span> 启动后台服务（需管理员）。';
+    document.body.insertBefore(el, document.querySelector('.wrap'));
+  }
+  if(!on && el) el.remove();
+  document.body.classList.toggle('demo', !!on);
+}
+
+/* ---------- 网络 ---------- */
+async function GET(p){
+  try{ const r = await fetch(p,{cache:'no-store'}); if(!r.ok) return null;
+       return await r.json(); }
+  catch(e){ return null; }
+}
+async function POST(p, data){
+  try{
+    const r = await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data||{})});
+    return await r.json();
+  }catch(e){ return {ok:false,error:String(e)}; }
+}
+
+/* ---------- 渲染：顶栏 ---------- */
+const MODE_META = [
+  {id:'off',    num:'00', nm:'关闭',     ds:'完全放行，不做任何改动（用于对照测试）'},
+  {id:'rules',  num:'01', nm:'规则模式', ds:'仅对命中规则的域名分片，推荐日常使用'},
+  {id:'global', num:'02', nm:'全局模式', ds:'所有 TLS 443 首包一律分片，覆盖全部域名'},
+];
+
+function renderTop(){
+  const s = STATE;
+  $('t-admin').textContent = DEMO ? '预览' : (s.admin ? '已提权' : '未提权');
+  $('p-admin').className = 'pill ' + (DEMO ? '' : (s.admin ? 'good':'bad'));
+  $('d-admin').className = 'dot ' + (!DEMO && s.admin ? 'on':'off');
+
+  $('t-engine').textContent = DEMO ? '示例数据' : (s.running ? '运行中' : '已停止');
+  $('p-engine').className = 'pill ' + (s.running && !DEMO ? 'good':'');
+  $('d-engine').className = 'dot ' + (s.running && !DEMO ? 'on':'off');
+
+  const mn = {off:'关闭',rules:'规则模式',global:'全局模式'}[s.mode] || s.mode;
+  $('t-mode').textContent = mn;
+
+  $('t-uptime').textContent = s.uptime!=null ? fmtDur(s.uptime) : '--';
+  $('b-start').disabled = DEMO || s.running || busy;
+  $('b-stop').disabled  = DEMO || !s.running || busy;
+  $('t-threshold').textContent = '设备阈值 ' + s.device_threshold + 'B';
+  $('t-rulecount').textContent = s.rules.length + ' 条 · 启用 ' + s.rules.filter(r=>r.enabled).length;
+  $('t-since').textContent = s.running && s.uptime!=null
+      ? (DEMO ? '示例运行时长 ' : '已运行 ') + fmtDur(s.uptime) : '引擎未运行';
+}
+function fmtDur(sec){
+  const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), x=sec%60;
+  return (h?h+':':'')+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0');
+}
+
+/* ---------- 渲染：模式 ---------- */
+function renderModes(){
+  const box = $('modes');
+  box.innerHTML = '';
+  MODE_META.forEach(m=>{
+    const b = document.createElement('button');
+    b.className = 'mode' + (STATE.mode===m.id ? ' sel'+(m.id==='global'?' global':'') : '');
+    b.innerHTML = `<span class="num">${m.num}</span>
+      <span><span class="nm">${m.nm}</span><span class="ds">${m.ds}</span></span>
+      <span class="tick">${STATE.mode===m.id?'当前':'切换'}</span>`;
+    b.onclick = async ()=>{ if(STATE.mode===m.id) return;
+      busy=true; renderTop();
+      await POST('/api/mode',{mode:m.id});
+      busy=false; await refresh(); };
+    box.appendChild(b);
+  });
+}
+
+/* ---------- 渲染：统计 ---------- */
+function renderStats(){
+  const t = STATE.stats;
+  $('s-seen').textContent = t.seen;
+  $('s-split').textContent = t.split;
+  $('s-sent').textContent = t.sent;
+  $('s-domain').textContent = t.last_domain || '—';
+}
+
+/* ---------- 渲染：参数 ---------- */
+function renderParams(){
+  const p = STATE.params, map = {guard:'p-guard', min_cut:'p-mincut', mtu:'p-mtu', port:'p-port'};
+  for(const k in map){
+    const el = $(map[k]);
+    if(document.activeElement !== el) el.value = p[k];
+  }
+}
+
+/* ---------- 渲染：规则 ---------- */
+function renderRules(){
+  const box = $('rules');
+  if(!STATE.rules.length){ box.innerHTML = '<div class="hint" style="text-align:center;padding:18px 0">暂无规则，请在下方添加。</div>'; return; }
+  box.innerHTML = '';
+  STATE.rules.forEach((r,i)=>{
+    const d = document.createElement('div');
+    d.className = 'rule' + (r.enabled?' on':' off') + (r.hits>0?' hit':'');
+    d.innerHTML = `
+      <label class="sw" title="${r.enabled?'点击停用':'点击启用'}">
+        <input type="checkbox" ${r.enabled?'checked':''}><i></i></label>
+      <span class="rn" title="${esc(r.name)}">${esc(r.name)}</span>
+      <span class="rt ${r.type}">${r.type==='suffix'?'后缀':'关键词'}</span>
+      <span class="rv" title="${esc(r.value)}">${esc(r.value)}</span>
+      <span class="rh" title="命中次数">${r.hits}</span>
+      <span class="ra">
+        <button class="iconb edit" title="编辑">✎</button>
+        <button class="iconb del" title="删除">✕</button>
+      </span>`;
+    d.querySelector('input').onchange = ()=>POST('/api/rule',{action:'toggle',index:i}).then(refresh);
+    d.querySelector('.edit').onclick = ()=>startEdit(i);
+    d.querySelector('.del').onclick = ()=>{ if(confirm('确定删除规则「'+r.name+'」？'))
+      POST('/api/rule',{action:'delete',index:i}).then(refresh); };
+    box.appendChild(d);
+  });
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- 规则编辑 ---------- */
+function startEdit(i){
+  const r = STATE.rules[i];
+  EDIT_IDX = i;
+  $('r-name').value = r.name; $('r-type').value = r.type;
+  $('r-value').value = r.value; $('r-enabled').value = r.enabled?'1':'0';
+  $('editor').classList.add('editing');
+  $('editor-hd').innerHTML = '<span class="tag">编辑中</span> 修改规则 #'+(i+1);
+  $('b-rulesave').textContent = '保存修改';
+  $('b-rulecancel').style.display = '';
+  $('r-name').focus();
+}
+function resetEditor(){
+  EDIT_IDX = null;
+  $('r-name').value=''; $('r-value').value=''; $('r-type').value='suffix'; $('r-enabled').value='1';
+  $('editor').classList.remove('editing');
+  $('editor-hd').textContent = '新建规则';
+  $('b-rulesave').textContent = '添加规则';
+  $('b-rulecancel').style.display = 'none';
+}
+$('b-rulesave').onclick = async ()=>{
+  const rule = {name:$('r-name').value.trim()||'未命名规则', type:$('r-type').value,
+                value:$('r-value').value.trim(), enabled:$('r-enabled').value==='1'};
+  if(!rule.value){ alert('匹配内容不能为空'); return; }
+  const res = await POST('/api/rule', EDIT_IDX==null ? {action:'add',rule}
+                                                     : {action:'update',index:EDIT_IDX,rule});
+  if(!res.ok){ alert(res.error||'操作失败'); return; }
+  resetEditor(); await refresh();
+};
+$('b-rulecancel').onclick = resetEditor;
+$('b-rulereset').onclick = ()=>{ if(confirm('载入内置游戏预设？\n当前规则会被覆盖（米哈游 / Steam / 战网 / PUBG / 腾讯 / 网易 / 主机平台等 12 组）。'))
+  POST('/api/rule',{action:'reset'}).then(refresh); };
+
+/* ---------- 参数 ---------- */
+$('b-saveparams').onclick = async ()=>{
+  const res = await POST('/api/params',{guard:$('p-guard').value, min_cut:$('p-mincut').value,
+                                        mtu:$('p-mtu').value, port:$('p-port').value});
+  if(!res.ok) alert(res.error||'保存失败'); await refresh();
+};
+
+/* ---------- 控制 ---------- */
+$('b-start').onclick = async ()=>{ busy=true; renderTop();
+  const r = await POST('/api/control',{action:'start'}); busy=false;
+  if(!r.ok) alert(r.error||'启动失败'); await refresh(); };
+$('b-stop').onclick = async ()=>{ busy=true; renderTop();
+  await POST('/api/control',{action:'stop'}); busy=false; await refresh(); };
+$('b-selftest').onclick = async ()=>{
+  const b=$('b-selftest'); b.disabled=true; b.textContent='测试中';
+  const r = await POST('/api/selftest',{host:$('p-host').value.trim()});
+  b.disabled=false; b.textContent='自检';
+  if(r.ok) showSelftest(r.result); else alert(r.error||'自检失败');
+  pollEvents(); await refresh();
+};
+function showSelftest(x){
+  const st=$('st'); st.style.display='';
+  st.className='st ' + (x.ok?'ok':'bad');
+  st.innerHTML = `<div class="head"><b>${x.ok?'直连成功':'直连失败'}</b>
+      <span style="color:var(--muted);font-size:10.5px">${esc(x.host)}</span></div>
+    <div class="kv">目标 IP &nbsp;<i>${esc(x.ip||'未解析')}</i></div>
+    <div class="kv">耗时 &nbsp;<i>${x.ms!=null?x.ms+' ms':'—'}</i> &nbsp;·&nbsp; 走代理 &nbsp;<i>否</i></div>
+    ${x.error?`<div class="kv" style="color:#ff9aa4">错误 &nbsp;<i style="color:#ff9aa4">${esc(x.error)}</i></div>`:''}`;
+}
+
+/* ---------- 日志 ---------- */
+function appendLogs(list){
+  const box=$('log');
+  if(!list.length) return;
+  const empty = box.querySelector('.empty'); if(empty) empty.remove();
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  list.forEach(e=>{
+    const d=document.createElement('div'); d.className='ln';
+    d.innerHTML=`<span class="tm">${e.t}</span><span class="lv ${e.level}">${e.level}</span>
+      <span class="tx">${esc(e.text)}</span>`;
+    box.appendChild(d);
+  });
+  while(box.children.length>400) box.removeChild(box.firstChild);
+  if(nearBottom) box.scrollTop = box.scrollHeight;
+}
+async function pollEvents(){
+  const r = await GET('/api/events?since='+LAST_EID);
+  if(!r) return;
+  if(r.events && r.events.length){ appendLogs(r.events); LAST_EID = r.last_event_id; }
+}
+$('b-clearlog').onclick = ()=>{ POST('/api/events/clear'); $('log').innerHTML='<div class="empty">等待事件…</div>'; };
+
+/* ---------- 主循环 ---------- */
+function applyState(s){
+  STATE = s;
+  renderTop(); renderModes(); renderStats(); renderParams(); renderRules();
+  if(s.last_selftest && $('st').style.display==='none') showSelftest(s.last_selftest);
+}
+function enterDemo(){
+  if(DEMO) return;
+  DEMO = true; showOfflineBar(true);
+  STATE = DEMO_STATE;
+  LAST_EID = DEMO_STATE.last_event_id;
+  $('log').innerHTML = '';
+  appendLogs(DEMO_EVENTS.slice());
+  applyState(STATE);
+}
+function exitDemo(){
+  if(!DEMO) return;
+  DEMO = false; showOfflineBar(false);
+  $('log').innerHTML = '<div class="empty">等待事件…</div>';
+  $('st').style.display = 'none';
+  LAST_EID = 0;
+  resetEditor();
+}
+async function refresh(){
+  const s = await GET('/api/state');
+  if(!s){ enterDemo(); return; }
+  if(DEMO) exitDemo();
+  applyState(s);
+}
+async function pollEvents(){
+  if(DEMO) return;
+  const r = await GET('/api/events?since='+LAST_EID);
+  if(!r) return;
+  if(r.events && r.events.length){ appendLogs(r.events); LAST_EID = r.last_event_id; }
+}
+$('b-clearlog').onclick = ()=>{ if(DEMO) return;
+  POST('/api/events/clear'); $('log').innerHTML='<div class="empty">等待事件…</div>'; };
+
+(async function loop(){
+  await refresh(); await pollEvents();
+  setInterval(async ()=>{ await refresh(); await pollEvents(); }, DEMO ? 2500 : 900);
+})();
+</script>
+</body>
+</html>

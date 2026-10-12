@@ -1,0 +1,80 @@
+FragDPI
+Copyright 2026 The FragDPI Authors
+
+This product includes software developed by third parties. The following
+notice is provided in accordance with the terms of the respective licenses.
+
+
+================================================================================
+1. WinDivert  (bundled binary: third_party/windivert/)
+================================================================================
+
+  WinDivert.dll       (Windows DLL, x64)
+  WinDivert64.sys     (Windows kernel driver, x64)
+  Copyright (C) 2011-2022 Basil (https://reqrypt.org/windivert.html)
+
+  Licensed under the GNU Lesser General Public License, version 3 (LGPL-3.0).
+  A copy of the license text is provided at:
+      third_party/windivert/LICENSE.LGPL-3.0.txt
+
+  The license text is the combined LGPL-3.0 / GPL-3.0 document, which is how
+  the LGPL-3.0 is officially published (the LGPL is written as a set of
+  additional permissions on top of the GPL-3.0).
+
+  Source code of the library:
+      https://github.com/basil00/Divert
+      https://reqrypt.org/windivert.html
+
+  HOW THIS PROJECT USES THE LIBRARY
+  ---------------------------------
+  FragDPI loads WinDivert dynamically at runtime through ctypes
+  (LoadLibrary-equivalent), and WinDivert is NOT modified, statically linked,
+  or otherwise incorporated into this project's own source code. This is the
+  "work that uses the library" case described in LGPL-3.0 section 4, not the
+  "combined work" case. Accordingly:
+
+    * FragDPI's own source code is licensed under Apache-2.0 and is not
+      affected by the LGPL.
+
+    * Because the library is a separate, replaceable DLL, the LGPL requirement
+      of allowing the user to relink with a modified version of the library is
+      satisfied: simply replace third_party/windivert/WinDivert.dll (and the
+      matching WinDivert64.sys) with your own build, and FragDPI will use it.
+
+    * If you redistribute this project, keep this NOTICE file and the full
+      license text in third_party/windivert/LICENSE.LGPL-3.0.txt alongside
+      the binaries.
+
+  SHA-256 of the bundled binaries (WinDivert 2.2, x64, unmodified upstream
+  release). Verify with:  certutil -hashfile <file> SHA256
+
+      WinDivert.dll           c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
+      WinDivert64.sys         8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+      LICENSE.LGPL-3.0.txt    e5453b2e71e4c4dcdb89a2539655add3a63202521cf3012b768e8bfeda199312
+
+
+================================================================================
+2. GoodbyeDPI  (NOT bundled — design reference only)
+================================================================================
+
+  https://github.com/ValdikSS/GoodbyeDPI
+  Copyright (C) 2017-2024 ValdikSS <iam@valdikss.org.ru>
+  Licensed under the Apache License, Version 2.0.
+
+  No GoodbyeDPI code or binary is distributed with FragDPI. It is credited
+  because FragDPI's overall architecture (WinDivert-based, system-wide
+  interception of outbound TCP with per-packet re-segmentation) was informed
+  by reading GoodbyeDPI. FragDPI's implementation was written independently
+  and its fragmentation strategy, rule engine, and configuration console are
+  original to this project.
+
+
+================================================================================
+3. Python Standard Library
+================================================================================
+
+  FragDPI's core, console server, and CLI tools depend only on the Python
+  standard library (http.server, ctypes, socket, ssl, struct, threading,
+  json, argparse, ...), which is distributed under the Python Software
+  Foundation License. No third-party Python packages are required at runtime.
+  The optional test tooling uses the same standard library only.

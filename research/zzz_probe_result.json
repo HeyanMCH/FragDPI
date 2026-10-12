@@ -1,0 +1,184 @@
+{
+ "ts": "2026-10-12 15:25:42",
+ "dns_compare": {
+  "router": {
+   "ms": 17.1,
+   "ips": [
+    "60.163.131.14",
+    "60.163.131.10",
+    "60.188.78.23"
+   ]
+  },
+  "ali_223": {
+   "ms": 73.5,
+   "ips": [
+    "183.146.26.53",
+    "61.164.114.231",
+    "61.164.114.230",
+    "61.164.114.227",
+    "61.164.114.234",
+    "61.164.114.229",
+    "61.164.114.232",
+    "183.146.26.50",
+    "182.40.51.20",
+    "61.164.114.233",
+    "182.40.51.48",
+    "61.164.114.228"
+   ]
+  },
+  "dnspod_119": {
+   "ms": 94.0,
+   "ips": [
+    "111.3.79.61",
+    "111.3.79.62",
+    "111.3.79.60",
+    "111.3.79.64",
+    "111.3.79.65",
+    "111.3.79.63",
+    "111.2.79.10",
+    "39.173.144.16"
+   ]
+  },
+  "dns_114": {
+   "ms": 16.8,
+   "ips": [
+    "60.163.131.10",
+    "60.188.78.23",
+    "61.164.114.233"
+   ]
+  }
+ },
+ "tls_matrix": [
+  {
+   "ip": "60.163.131.14",
+   "sni": "zzz.mihoyo.com",
+   "tcp_ms": 23.7,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 10.0
+  },
+  {
+   "ip": "60.163.131.10",
+   "sni": "zzz.mihoyo.com",
+   "tcp_ms": 12.0,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 2.6
+  },
+  {
+   "ip": "60.188.78.23",
+   "sni": "zzz.mihoyo.com",
+   "tcp_ms": 32.6,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 3.3
+  },
+  {
+   "ip": "60.163.131.14",
+   "sni": "www.baidu.com",
+   "tcp_ms": 11.6,
+   "tls_fail": "SSLError",
+   "tls_ms": 16.1
+  },
+  {
+   "ip": "180.101.49.44",
+   "sni": "zzz.mihoyo.com",
+   "tcp_ms": 19.1,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 3.1
+  },
+  {
+   "ip": "180.101.49.44",
+   "sni": "www.baidu.com",
+   "tcp_ms": 25.1,
+   "tls_fail": "SSLCertVerificationError",
+   "tls_ms": 40.0
+  }
+ ],
+ "other_mihoyo_sni": [
+  {
+   "ip": "122.228.79.45",
+   "sni": "www.mihoyo.com",
+   "tcp_ms": 37.8,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 3.8,
+   "domain": "www.mihoyo.com"
+  },
+  {
+   "ip": "117.27.154.200",
+   "sni": "bbs.mihoyo.com",
+   "tcp_ms": 39.7,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 3.2,
+   "domain": "bbs.mihoyo.com"
+  },
+  {
+   "ip": "122.228.195.20",
+   "sni": "webstatic.mihoyo.com",
+   "tcp_ms": 36.4,
+   "tls_fail": "ConnectionResetError",
+   "tls_ms": 3.6,
+   "domain": "webstatic.mihoyo.com"
+  }
+ ],
+ "http80": [
+  {
+   "ip": "60.163.131.14",
+   "reply": "HTTP/1.1 301 Moved Permanently | Server: Tengine | Date: Mon, 12 Oct 2026 07:25:44 GMT | Content-Type: text/html | Content-L"
+  },
+  {
+   "ip": "60.163.131.10",
+   "reply": "HTTP/1.1 301 Moved Permanently | Server: Tengine | Date: Mon, 12 Oct 2026 07:25:44 GMT | Content-Type: text/html | Content-L"
+  }
+ ],
+ "udp_egress": {
+  "ntp_aliyun_203.107.6.88": {
+   "ok": true,
+   "reply_bytes": 48,
+   "ms": 34.7
+  },
+  "ntp_tencent_119.28.183.184": {
+   "ok": true,
+   "reply_bytes": 48,
+   "ms": 44.5
+  },
+  "ext_dns_udp53": {
+   "ali": {
+    "ms": 73.5,
+    "ips": [
+     "183.146.26.53",
+     "61.164.114.231",
+     "61.164.114.230",
+     "61.164.114.227",
+     "61.164.114.234",
+     "61.164.114.229",
+     "61.164.114.232",
+     "183.146.26.50",
+     "182.40.51.20",
+     "61.164.114.233",
+     "182.40.51.48",
+     "61.164.114.228"
+    ]
+   },
+   "dnspod": {
+    "ms": 94.0,
+    "ips": [
+     "111.3.79.61",
+     "111.3.79.62",
+     "111.3.79.60",
+     "111.3.79.64",
+     "111.3.79.65",
+     "111.3.79.63",
+     "111.2.79.10",
+     "39.173.144.16"
+    ]
+   }
+  }
+ },
+ "wifi_gateway_ping": {
+  "sent": 20,
+  "recv": 20,
+  "loss_pct": 0.0,
+  "min": 1,
+  "avg": 1.3,
+  "max": 3,
+  "jitter": 0.6
+ }
+}
