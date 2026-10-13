@@ -914,5 +914,58 @@ class TestMultiPort(unittest.TestCase):
         self.assertEqual(d.port_list(), [443, 8443, 2053])
 
 
+class TestDriverManagement(unittest.TestCase):
+    """驱动残留管理 API 的形状与跨平台安全性。
+
+    这些函数碰的是 Windows 专有接口（SCM / 注册表），所以这里**不**断言具体宿主机的
+    状态（CI 上跑在 Linux，本机可能装没装驱动都不同）——只验证：
+      · 任何平台上调用都不抛异常
+      · 返回值形状稳定（UI 和 CLI 直接吃这些字段）
+    真正「造残留 → 清理 → 验证」的闭环需要管理员权限，在
+    tools/cleanup_driver.py 里手工跑。
+    """
+
+    def test_driver_service_state_returns_none_or_int(self):
+        st = fc.driver_service_state()
+        self.assertTrue(st is None or isinstance(st, int),
+                        "应返回 None 或状态码，实际 %r" % (st,))
+
+    def test_hvci_returns_tristate(self):
+        v = fc.hvci_enabled()
+        self.assertIn(v, (True, False, None),
+                      "内存完整性读取应返回 True/False/None，实际 %r" % (v,))
+
+    def test_driver_leftovers_shape(self):
+        d = fc.driver_leftovers()
+        for key in ("service_exists", "service_state", "service_state_name",
+                    "service_running", "sys32_driver", "hvci"):
+            self.assertIn(key, d, "缺少字段 %s" % key)
+        self.assertIsInstance(d["service_exists"], bool)
+        self.assertIsInstance(d["service_running"], bool)
+        if not d["service_exists"]:
+            self.assertIsNone(d["service_state"])
+            self.assertFalse(d["service_running"])
+
+    def test_cleanup_stale_driver_is_safe_and_idempotent(self):
+        """没有残留时必须幂等返回成功；不抛异常。"""
+        ok, msg = fc.cleanup_stale_driver()
+        self.assertIsInstance(ok, bool)
+        self.assertIsInstance(msg, str)
+        self.assertTrue(msg)
+        if not fc.driver_leftovers()["service_exists"]:
+            self.assertTrue(ok, "无残留时应视为成功：%s" % msg)
+
+    def test_cleanup_stale_driver_never_touches_running_driver(self):
+        """服务 RUNNING 时必须拒绝动手（别的程序可能在用）。"""
+        d = fc.driver_leftovers()
+        if not d["service_running"]:
+            self.skipTest("当前没有正在运行的 WinDivert 服务，跳过")
+        ok, msg = fc.cleanup_stale_driver()
+        self.assertTrue(ok)
+        self.assertIn("跳过", msg)
+        self.assertTrue(fc.driver_leftovers()["service_exists"],
+                        "RUNNING 的服务不该被删掉")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

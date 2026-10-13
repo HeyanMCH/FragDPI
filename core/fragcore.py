@@ -107,6 +107,186 @@ def is_admin():
         return False
 
 
+# ------------------------------------------------------------------ 驱动清理
+# ⚠️ 为什么需要这一段：
+#   WinDivert 2.2 的 DLL **不导出任何卸载接口**（WinDivertUninstall 之类都不存在），
+#   驱动装卸完全藏在 WinDivertOpen/WinDivertClose 内部。实测有两个后果：
+#     1. WinDivertOpen 会创建名为 `WinDivert` 的内核服务，其 ImagePath 直接指向
+#        **本仓库里的 third_party/windivert/WinDivert64.sys**。驱动一旦加载，
+#        内核就锁住这个文件 —— 于是整个文件夹删不掉（用户实际踩到的 bug）。
+#     2. WinDivertOpen 失败（例如被内存完整性 HVCI 拦下，Win32=1450）时，
+#        服务已经建好了却**不会回滚**，留下一个 STOPPED 的孤儿服务。
+#   所以我们必须自己在停止/退出时把服务停掉并删除。
+SERVICE_NAME = "WinDivert"
+_SERVICE_STOPPED = 1
+_SERVICE_RUNNING = 4
+
+_SC_MANAGER_CONNECT = 0x0001
+_SC_MANAGER_ALL_ACCESS = 0xF003F
+_SERVICE_QUERY_STATUS = 0x0004
+_SERVICE_STOP = 0x0020
+_SERVICE_DELETE = 0x10000
+_ERROR_SERVICE_MARKED_FOR_DELETE = 1072
+_ERROR_SERVICE_DOES_NOT_EXIST = 1060
+
+
+class _SERVICE_STATUS(ctypes.Structure):
+    _fields_ = [("dwServiceType", ctypes.c_ulong),
+                ("dwCurrentState", ctypes.c_ulong),
+                ("dwControlsAccepted", ctypes.c_ulong),
+                ("dwWin32ExitCode", ctypes.c_ulong),
+                ("dwServiceSpecificExitCode", ctypes.c_ulong),
+                ("dwCheckPoint", ctypes.c_ulong),
+                ("dwWaitHint", ctypes.c_ulong)]
+
+
+def _open_scm(access=_SC_MANAGER_CONNECT):
+    """打开服务管理器。
+
+    ⚠️ 查询用 SC_MANAGER_CONNECT（非管理员也能开），删除才用 ALL_ACCESS。
+    早先一律用 ALL_ACCESS 时，非管理员这边 `OpenSCManagerW` 直接返回 NULL，
+    于是 `driver_service_state()` 把「没权限」误报成「服务不存在」——
+    会让用户以为已经干净了。这个坑踩过一次，别再合并这两级权限。
+    """
+    adv = ctypes.windll.advapi32
+    adv.OpenSCManagerW.restype = ctypes.c_void_p
+    adv.OpenSCManagerW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_ulong]
+    adv.OpenServiceW.restype = ctypes.c_void_p
+    adv.OpenServiceW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_ulong]
+    adv.CloseServiceHandle.argtypes = [ctypes.c_void_p]
+    return adv, adv.OpenSCManagerW(None, None, access)
+
+
+def driver_service_state(name=SERVICE_NAME):
+    """返回 None=服务不存在 / 状态码（1=SERVICE_STOPPED，4=SERVICE_RUNNING）。
+
+    只用 SCM API —— 本机把 sc.exe 拉进了程序黑名单，不能靠命令行。
+    查询只需要 CONNECT，所以非管理员也能拿到真实状态。
+    """
+    try:
+        adv, scm = _open_scm(_SC_MANAGER_CONNECT)
+        if not scm:
+            return None
+        try:
+            h = adv.OpenServiceW(ctypes.c_void_p(scm), name, _SERVICE_QUERY_STATUS)
+            if not h:
+                return None
+            try:
+                st = _SERVICE_STATUS()
+                if not adv.QueryServiceStatus(ctypes.c_void_p(h), ctypes.byref(st)):
+                    return None
+                return int(st.dwCurrentState)
+            finally:
+                adv.CloseServiceHandle(ctypes.c_void_p(h))
+        finally:
+            adv.CloseServiceHandle(ctypes.c_void_p(scm))
+    except Exception:
+        return None
+
+
+def uninstall_driver(name=SERVICE_NAME):
+    """停止并删除 WinDivert 驱动服务，释放被内核锁住的 WinDivert64.sys。
+
+    返回 (ok, 说明)。幂等：服务不存在也算成功。
+    """
+    state = driver_service_state(name)
+    if state is None:
+        return (True, "驱动服务不存在，无需清理")
+    if state == _SERVICE_RUNNING:
+        # 说明还有进程在用（可能是本程序，也可能是别的 WinDivert 程序）
+        pass
+    adv, scm = _open_scm(_SC_MANAGER_ALL_ACCESS)      # 删除需要 ALL_ACCESS
+    if not scm:
+        err = ctypes.get_last_error()
+        if err == 5:
+            return (False, "打开服务管理器失败：需要管理员权限")
+        return (False, f"打开服务管理器失败：Win32={err}")
+    try:
+        h = adv.OpenServiceW(ctypes.c_void_p(scm), name,
+                             _SERVICE_STOP | _SERVICE_QUERY_STATUS | _SERVICE_DELETE)
+        if not h:
+            err = ctypes.get_last_error()
+            if err == _ERROR_SERVICE_DOES_NOT_EXIST:
+                return (True, "驱动服务不存在，无需清理")
+            return (False, f"打开驱动服务失败：Win32={err}")
+        try:
+            stopped = True
+            if state == _SERVICE_RUNNING:
+                st = _SERVICE_STATUS()
+                adv.ControlService(ctypes.c_void_p(h), _SERVICE_STOP, ctypes.byref(st))
+                # 等服务真正停下（最多 3s）
+                for _ in range(30):
+                    time.sleep(0.1)
+                    if adv.QueryServiceStatus(ctypes.c_void_p(h), ctypes.byref(st)) \
+                            and st.dwCurrentState == _SERVICE_STOPPED:
+                        break
+                else:
+                    stopped = False
+            ok = bool(adv.DeleteService(ctypes.c_void_p(h)))
+            err = ctypes.get_last_error()
+            if not ok:
+                if err == _ERROR_SERVICE_MARKED_FOR_DELETE:
+                    return (True, "驱动服务已标记删除（重启后彻底消失）")
+                return (False, f"删除驱动服务失败：Win32={err}")
+            note = "已停止并删除 WinDivert 驱动服务"
+            if not stopped:
+                note = "已请求停止并删除 WinDivert 驱动服务（可能需重启才彻底释放）"
+            return (True, note)
+        finally:
+            adv.CloseServiceHandle(ctypes.c_void_p(h))
+    finally:
+        adv.CloseServiceHandle(ctypes.c_void_p(scm))
+
+
+def hvci_enabled():
+    """内存完整性 / HVCI 是否开启。
+
+    实测（2026-10-13，本机）：开着 HVCI 时 WinDivertOpen 直接失败 Win32=1450
+    （ERROR_NO_SYSTEM_RESOURCES），驱动根本进不了内核 —— 本程序会完全失效。
+    返回值：True / False / None（读不到注册表）
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios"
+                r"\HypervisorEnforcedCodeIntegrity") as k:
+            return bool(winreg.QueryValueEx(k, "Enabled")[0])
+    except Exception:
+        return None
+
+
+def cleanup_stale_driver(name=SERVICE_NAME):
+    """**安全清理**：只在服务处于 STOPPED 时删除它。
+
+    为什么不无条件删：如果有别的程序（zapret / 其他 WinDivert 应用）正在用这个驱动，
+    服务会是 RUNNING —— 那说明不是残留，删了会打断别人。RUNNING 时一律不动手。
+
+    返回 (ok, 说明)。ok=True 且说明里带「跳过」表示没动手。
+    """
+    state = driver_service_state(name)
+    if state is None:
+        return (True, "没有残留")
+    if state == _SERVICE_RUNNING:
+        return (True, "驱动正在被使用（服务状态 RUNNING），跳过清理")
+    return uninstall_driver(name)
+
+
+def driver_leftovers():
+    """检查驱动残留 + 会拦截驱动的系统设置。返回 dict，供 UI / CLI 显示。"""
+    state = driver_service_state()
+    sys32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                         "System32", "drivers", "WinDivert.sys")
+    return {
+        "service_exists": state is not None,
+        "service_state": state,
+        "service_state_name": {1: "STOPPED", 4: "RUNNING"}.get(state, str(state)),
+        "service_running": state == _SERVICE_RUNNING,
+        "sys32_driver": sys32 if os.path.exists(sys32) else None,
+        "hvci": hvci_enabled(),
+    }
+
+
 def init_console():
     """把 stdout/stderr 切到 UTF-8，避免中文在「被重定向」时把脚本弄崩。
 
@@ -509,6 +689,14 @@ class Engine:
         if self.running:
             return True
         dll = load_dll()
+        # 启动前先清掉上次异常退出留下的孤儿服务。
+        # ⚠️ 只在服务是 STOPPED 时才动手 —— RUNNING 说明有别的程序在用这个驱动。
+        try:
+            _ok, _msg = cleanup_stale_driver()
+            if "没有残留" not in _msg and "跳过" not in _msg:
+                self.on_event("info", f"启动前清理驱动残留：{_msg}")
+        except Exception:
+            pass
         ports = self.params.port_list()
         flt = build_filter(self.params).encode()
         handle = dll.WinDivertOpen(flt, WINDIVERT_LAYER_NETWORK, 0, 0)
@@ -516,6 +704,14 @@ class Engine:
             err = ctypes.get_last_error()
             if err == 5:
                 self.on_event("error", "打开过滤句柄失败：权限不足（需要管理员权限加载内核驱动）")
+            elif err == 1450:
+                self.on_event("error",
+                              "打开过滤句柄失败：Win32=1450（ERROR_NO_SYSTEM_RESOURCES）。"
+                              "这几乎总是「内存完整性」（内核隔离 / HVCI）拦下了 WinDivert 驱动 —— "
+                              "WinDivert 2.2.2 已是上游最新版，没有可升级的版本，"
+                              "本机若不关掉它，本程序无法工作。"
+                              "关法：设置 → 隐私和安全性 → Windows 安全中心 → 设备安全性 → "
+                              "内核隔离 → 关闭「内存完整性」并重启（会降低系统安全性，请自行权衡）。")
             else:
                 self.on_event("error", f"打开过滤句柄失败：Win32 错误码 {err}")
             return False
@@ -530,7 +726,14 @@ class Engine:
         self._thread.start()
         return True
 
-    def stop(self):
+    def stop(self, cleanup_driver=False):
+        """停止拦截。
+
+        cleanup_driver=True 时会顺带把 WinDivert 服务停掉并删除 —— 这是为了修
+        「用过之后仓库文件夹删不掉」那个 bug：服务的 ImagePath 指向本仓库里的
+        WinDivert64.sys，驱动加载期间内核会锁住它。默认 False 是为了让界面上
+        频繁的启停保持轻快；控制台退出与命令行工具退出时会显式打开它。
+        """
         self._stop.set()
         dll = load_dll()
         with self._lock:
@@ -543,6 +746,12 @@ class Engine:
         if self._thread:
             self._thread.join(timeout=3)
         self._thread = None
+        if cleanup_driver:
+            try:
+                ok, msg = cleanup_stale_driver()
+                self.on_event("info" if ok else "warn", f"驱动清理：{msg}")
+            except Exception as e:
+                self.on_event("warn", f"驱动清理失败：{type(e).__name__}: {e}")
         self.on_event("info", f"拦截已停止（累计分片 {self.stats['split']} 次）")
 
     def selftest(self, host="zzz.mihoyo.com", timeout=8):

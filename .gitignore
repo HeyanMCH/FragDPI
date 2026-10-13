@@ -25,6 +25,10 @@ core/fragconfig.json
 core/fragconfig.json.tmp
 # 加密 DNS 接管时的原配置备份（含本机网卡信息，绝对不能提交）
 core/dns_backup.json
+# 自动升级：下载的暂存目录与本机生成的替换脚本
+_update_staging/
+apply_update.cmd
+update_state.json
 *.tmp
 
 # 日志与临时输出

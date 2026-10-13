@@ -1,0 +1,134 @@
+name: release
+
+# 打 tag（形如 v1.1.0）即触发发行：
+#   校验版本一致性 -> 跑单测 -> 打 Windows 发行包 -> 生成 SHA256SUMS -> 创建 Release
+#
+# 资产命名是**契约**，客户端升级器（tools/update.py）按它找文件，别改：
+#     FragDPI-<version>-win-x64.zip
+#     SHA256SUMS
+#
+# 关于「要不要做成 exe」：当前发行包是「源码 + 捆绑的 WinDivert 二进制」，
+# 需要本机有 Python 3.8+（start_console.cmd 会自动找）。做成单文件 exe 需要
+# PyInstaller 把 WinDivert.dll/.sys 一起释放出来再提权加载驱动，属于独立工作，
+# 等有需求再说 —— 好处是这个 zip 完全透明、可直接审计。
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 1.1.0）；留空则读 VERSION 文件'
+        required: false
+        default: ''
+
+permissions:
+  contents: write            # 创建 Release 需要写权限
+
+jobs:
+  release:
+    name: 打 Windows 发行包并发布
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # 生成 release notes 需要完整历史
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # ---------------------------------------------------------------- 版本校验
+      # 防的就是「代码里 1.1.0、tag 打成 v1.2.0」这种漂移。
+      - name: 校验版本号一致性
+        shell: pwsh
+        run: |
+          $fileVer = (Get-Content VERSION -Raw).Trim()
+          if (-not $fileVer) { throw "VERSION 文件是空的" }
+          Write-Host "VERSION 文件 = $fileVer"
+
+          $input_ver = "${{ github.event.inputs.version }}"
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}"
+            $tagVer = $tag -replace '^v', ''
+            if ($tagVer -ne $fileVer) {
+              throw "tag ($tagVer) 与 VERSION ($fileVer) 不一致 —— 请先改 VERSION 再加 tag"
+            }
+            Write-Host "tag 与 VERSION 一致 ✅"
+          } elseif ($input_ver) {
+            $fileVer = $input_ver
+            Write-Host "手动指定版本 = $fileVer"
+          }
+          "VERSION_FOR_BUILD=$fileVer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # ---------------------------------------------------------------- 先跑测试
+      - name: 跑单元测试（不通过就不发行）
+        run: python -m unittest discover -s tests -v
+
+      - name: 校验捆绑的 WinDivert 二进制
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash "third_party/windivert/WinDivert.dll" -Algorithm SHA256).Hash.ToLower()
+          Write-Host "WinDivert.dll SHA256 = $h"
+          if ($h -ne "c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2") {
+            # 注意：这里只警告，因为主 CI 已经卡过一道；避免哈希笔误导致发不出版
+            Write-Host "::warning::WinDivert.dll 哈希与 NOTICE 记录不一致，请确认是否官方发行版"
+          }
+
+      # ---------------------------------------------------------------- 打包
+      # 用 git archive 而不是手写 zip：只有**被 git 跟踪**的文件会进包，
+      # 因此 fragconfig.json / dns_backup.json / _update_staging / __pycache__
+      # 这些本机私有的东西天然被排除，不用维护排除清单。
+      - name: 打发行包
+        shell: pwsh
+        run: |
+          $ver = $env:VERSION_FOR_BUILD
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zip = "dist/FragDPI-$ver-win-x64.zip"
+          git archive --format=zip --prefix="FragDPI-$ver/" -o $zip HEAD
+          if (-not (Test-Path $zip)) { throw "打包失败" }
+          Write-Host "产出 $zip ($((Get-Item $zip).Length) bytes)"
+
+      - name: 生成 SHA256SUMS
+        shell: pwsh
+        run: |
+          Push-Location dist
+          $lines = Get-ChildItem -File | Where-Object { $_.Name -ne 'SHA256SUMS' } | ForEach-Object {
+            $h = (Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)"
+          }
+          $lines | Out-File -FilePath SHA256SUMS -Encoding ascii
+          Get-Content SHA256SUMS | Write-Host
+          Pop-Location
+
+      # ---------------------------------------------------------------- 发布
+      - name: 创建 Release 并上传资产
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = $env:VERSION_FOR_BUILD
+          $tag = "v$ver"
+          $zip = "dist/FragDPI-$ver-win-x64.zip"
+          $notes = @"
+          ## 安装
+
+          下载 ``FragDPI-$ver-win-x64.zip``，解压后双击 ``start_console.cmd``（会自动提权）。
+          需要本机有 Python 3.8+。哈希见附件 ``SHA256SUMS``。
+
+          ⚠️ **已知限制**
+          - 开了「内存完整性」（内核隔离 / HVCI）的机器上，WinDivert 驱动会被拦下
+            （``WinDivertOpen`` 报 1450），拦截功能无法启动。WinDivert 2.2.2 已是上游最新版。
+          - 用完想删/移文件夹，先跑 ``cleanup_driver.cmd`` 清掉驱动服务残留。
+          "@
+          $notes | Out-File -FilePath dist/RELEASE_NOTES.md -Encoding utf8
+
+          if (gh release view $tag 2>$null) {
+            Write-Host "Release $tag 已存在，改为上传/覆盖资产"
+            gh release upload $tag $zip dist/SHA256SUMS --clobber
+          } else {
+            gh release create $tag $zip dist/SHA256SUMS `
+              --title "FragDPI $ver" `
+              --notes-file dist/RELEASE_NOTES.md `
+              --generate-notes
+          }

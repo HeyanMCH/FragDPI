@@ -46,6 +46,17 @@ try:
     import doh_stub as _doh           # 本地 DoH 存根（加密 DNS）
 except Exception:
     _doh = None
+try:
+    import update as _upd             # 自动升级器
+except Exception:
+    _upd = None
+try:
+    from fragversion import get_version as _get_version
+except Exception:
+    def _get_version():
+        return "0.0.0"
+
+VERSION = _get_version()
 
 MODE_LABEL = {"off": "关闭", "rules": "规则模式",
               "global": "全局模式", "privacy": "隐私模式"}
@@ -123,6 +134,8 @@ class Console:
         self._lock = threading.Lock()
         self.last_selftest = None
         self.last_dnscheck = None
+        self.last_update = None         # 最近一次升级检查结果
+        self.update_staged = False
         self.engine = fc.Engine(self.ruleset, self.params, on_event=self.log)
         # 规则命中计数在 fragcore 内部累加，这里只做快照展示
 
@@ -264,6 +277,7 @@ class Console:
         last_domain = None if self.privacy else st.get("last_domain")
         return {
             "app": "fragdpi-console",
+            "version": VERSION,
             "admin": fc.is_admin(),
             "running": e.running,
             "uptime": up,
@@ -279,6 +293,12 @@ class Console:
                 "last_domain": last_domain,
             },
             "device_threshold": fc.MEASURED_DEVICE_THRESHOLD,
+            "driver": fc.driver_leftovers(),
+            "update": {
+                "supported": _upd is not None,
+                "check": self.last_update,
+                "staged": self.update_staged,
+            },
             "last_selftest": self.last_selftest,
             "last_dnscheck": self.last_dnscheck,
             "dnscheck_available": _dlc is not None,
@@ -479,6 +499,57 @@ class Handler(BaseHTTPRequestHandler):
             c.last_selftest = res
             return self._json({"ok": True, "result": res})
 
+        if p == "/api/update":
+            if _upd is None:
+                return self._json({"ok": False,
+                                   "error": "升级模块不可用（tools/update.py 缺失）"}, 500)
+            act = (data.get("action") or "check").lower()
+
+            if act == "check":
+                info = _upd.check_update()
+                c.last_update = info
+                if info.get("error"):
+                    c.log("warn", f"升级检查失败：{info['error']}")
+                elif info.get("newer"):
+                    c.log("info", f"发现新版本 {info['latest']}（当前 {info['current']}）")
+                else:
+                    c.log("info", f"已是最新版本（{info['current']}）")
+                return self._json({"ok": True, "result": info})
+
+            if act == "stage":
+                info = c.last_update or _upd.check_update()
+                c.last_update = info
+                if info.get("error"):
+                    return self._json({"ok": False, "error": info["error"]}, 400)
+                if not info.get("newer"):
+                    return self._json({"ok": False, "error": "当前已是最新版本"}, 400)
+                ok, msg = _upd.stage_update(
+                    info, progress=lambda s: c.log("info", f"[升级] {s}"))
+                if not ok:
+                    c.log("error", f"升级包下载失败：{msg}")
+                    return self._json({"ok": False, "error": msg}, 500)
+                ok2, msg2 = _upd.write_apply_script()
+                c.update_staged = bool(ok2)
+                if ok2:
+                    c.log("info", "升级包已就绪。关闭控制台后双击 apply_update.cmd "
+                                  "即完成替换并自动重启（会保留你的配置）。")
+                else:
+                    c.log("error", f"生成替换脚本失败：{msg2}")
+                return self._json({"ok": ok2, "message": msg,
+                                   "script": msg2 if ok2 else None})
+
+            return self._json({"ok": False, "error": "未知的 action"}, 400)
+
+        if p == "/api/driver":
+            act = (data.get("action") or "state").lower()
+            if act == "cleanup":
+                # 用户主动点按钮 → 明确意图，所以用 uninstall 而不是 cleanup_stale
+                ok, msg = fc.uninstall_driver()
+                c.log("info" if ok else "error", f"驱动清理：{msg}")
+                return self._json({"ok": ok, "message": msg,
+                                   "driver": fc.driver_leftovers()})
+            return self._json({"ok": True, "driver": fc.driver_leftovers()})
+
         if p == "/api/events/clear":
             with c._lock:
                 c.events.clear()
@@ -506,7 +577,7 @@ class Handler(BaseHTTPRequestHandler):
 def banner():
     c = CONSOLE
     print("=" * 62)
-    print("  fragdpi 控制台  ·  首包分片引擎 (WinDivert)")
+    print(f"  fragdpi 控制台  ·  首包分片引擎 (WinDivert)   v{VERSION}")
     print("=" * 62)
     print(f"  管理员权限 : {'是' if fc.is_admin() else '否  ⚠ 必须管理员运行才能加载驱动'}")
     print(f"  工作模式   : {MODE_LABEL.get(c.ruleset.mode, c.ruleset.mode)}")
@@ -537,6 +608,26 @@ def main():
         print(f"\n  [!] 检测到上次未复原的 DNS 接管，已自动复原：{msg}")
         if not ok:
             print("      手动复原：python tools/doh_stub.py --off")
+
+    # 驱动环境体检：这两件事都会让拦截功能完全用不了，必须在启动时说清楚
+    drv = fc.driver_leftovers()
+    if drv["hvci"]:
+        print("\n  [!] 检测到「内存完整性」（内核隔离 / HVCI）已启用。")
+        print("      WinDivert 2.2.2 的驱动会被它拦下（WinDivertOpen 报 1450），")
+        print("      拦截功能将无法启动（该版本已是上游最新，没有可升级的替代）。")
+        print("      关闭方法：设置 → 隐私和安全性 → Windows 安全中心 → 设备安全性 →")
+        print("                内核隔离 → 关闭「内存完整性」，重启后生效。")
+        print("      ⚠ 关闭它会降低系统安全性，请自行权衡。")
+    if drv["service_exists"]:
+        print(f"\n  [!] 检测到 WinDivert 驱动服务残留（状态 {drv['service_state_name']}）。")
+        print("      驱动加载期间内核会锁住仓库里的 WinDivert64.sys —— 这正是")
+        print("      「用完之后文件夹删不掉」的原因。")
+        if drv["service_running"]:
+            print("      当前有程序正在使用该驱动，已跳过自动清理（避免打断别人）。")
+        else:
+            ok, msg = fc.cleanup_stale_driver()
+            print(f"      已自动清理：{msg}" if ok else f"      自动清理失败：{msg}")
+            print("      也可用 cleanup_driver.cmd 手动清理。")
     banner()
     try:
         httpd = ThreadingHTTPServer((BIND_HOST, BIND_PORT), Handler)
@@ -563,9 +654,13 @@ def main():
         except Exception:
             pass
         try:
-            CONSOLE.engine.stop()
+            # 退出时连驱动服务一起清掉 —— 否则仓库里的 WinDivert64.sys 会被锁住
+            CONSOLE.engine.stop(cleanup_driver=True)
         except Exception:
-            pass
+            try:
+                CONSOLE.engine.stop()
+            except Exception:
+                pass
         if CONSOLE.privacy and CONSOLE.clear_on_exit:
             with CONSOLE._lock:               # 退出即抹掉本次会话的事件记录
                 CONSOLE.events.clear()

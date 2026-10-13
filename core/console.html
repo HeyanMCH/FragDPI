@@ -316,10 +316,12 @@ select{cursor:pointer}
 /* 预览模式下禁用操作控件 */
 body.demo .modes,body.demo .rules,body.demo .editor .btns,
 body.demo #b-saveparams,body.demo #b-selftest,body.demo #b-start,body.demo #b-stop,
-body.demo #b-saveprivacy,body.demo #b-dnscheck,body.demo .pvctl,
+body.demo #b-saveprivacy,body.demo #b-dnscheck,body.demo #b-drvclean,body.demo .pvctl,
+body.demo #b-updcheck,body.demo #b-updstage,
 body.demo .iconb,body.demo .sw{pointer-events:none}
 body.demo #b-start,body.demo #b-stop,body.demo #b-saveparams,body.demo #b-selftest,
-body.demo #b-saveprivacy,body.demo #b-dnscheck,body.demo .pvctl,
+body.demo #b-saveprivacy,body.demo #b-dnscheck,body.demo #b-drvclean,body.demo .pvctl,
+body.demo #b-updcheck,body.demo #b-updstage,
 body.demo .iconb,body.demo .sw{opacity:.42}
 body.demo .editor{position:relative}
 body.demo .editor::after{
@@ -340,6 +342,7 @@ body.demo .editor::after{
     <div class="pill" id="p-admin"><span class="dot" id="d-admin"></span>驱动权限 <b id="t-admin">?</b></div>
     <div class="pill" id="p-engine"><span class="dot" id="d-engine"></span>拦截引擎 <b id="t-engine">?</b></div>
     <div class="pill acc">模式 <b id="t-mode">?</b></div>
+    <div class="pill" id="p-update"><span class="dot" id="d-update"></span>版本 <b id="t-version">?</b></div>
     <div class="pill">运行 <b id="t-uptime">--</b></div>
   </div>
 </header>
@@ -426,6 +429,21 @@ body.demo .editor::after{
             </div>
           </div>
           <div class="st" id="st" style="display:none"></div>
+          <div class="field" style="margin-top:10px">
+            <label>驱动残留（想删/移文件夹前先清这里）</label>
+            <div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center">
+              <span id="drv-state" style="font-size:12px;color:var(--muted);flex:1">检查中…</span>
+              <button class="btn sm ghost" id="b-drvclean" style="flex:none">清理驱动残留</button>
+            </div>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label>版本与升级</label>
+            <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+              <span id="upd-state" style="font-size:12px;color:var(--muted);flex:1 1 100%">未检查</span>
+              <button class="btn sm" id="b-updcheck" style="flex:none">检查更新</button>
+              <button class="btn sm ghost" id="b-updstage" style="flex:none" disabled>下载升级包</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -499,7 +517,9 @@ let DEMO = false;
 
 /* ---------- 离线预览用的示例数据（仅在连不上本地引擎时使用） ---------- */
 const DEMO_STATE = {
-  app:'fragdpi-console', admin:true, running:true, uptime:447, mode:'rules',
+  app:'fragdpi-console', version:'1.1.0', admin:true, running:true, uptime:447, mode:'rules',
+  update:{supported:true, staged:false, check:{ok:true,current:'1.1.0',latest:'1.1.0',newer:false,error:null}},
+  driver:{service_exists:false,service_state:null,service_state_name:null,service_running:false,sys32_driver:null,hvci:false},
   rules:[
     {name:'游戏 · 米哈游系（绝区零/原神/星铁/崩3/未定）',type:'suffix',value:'mihoyo.com',enabled:true,hits:128},
     {name:'游戏 · 米哈游国际服 Hoyoverse',type:'suffix',value:'hoyoverse.com',enabled:true,hits:23},
@@ -621,6 +641,25 @@ function renderStats(){
   $('s-sent').textContent = t.sent;
   $('s-domain').textContent = (STATE.privacy && STATE.privacy.active)
       ? '（已隐去）' : (t.last_domain || '—');
+}
+
+/* ---------- 渲染：驱动残留 ---------- */
+function renderDriver(){
+  const d = STATE.driver || {};
+  const el = $('drv-state');
+  if(!el) return;
+  el.style.color = 'var(--muted)';
+  if(d.service_running){
+    el.textContent = '驱动服务正在运行（有程序在用，清理会跳过）';
+    el.style.color = 'var(--warn)';
+  } else if(d.service_exists){
+    el.textContent = '有残留服务（' + (d.service_state_name||'?') + '）—— 清理后文件夹才能删';
+    el.style.color = 'var(--warn)';
+  } else {
+    el.textContent = (d.hvci ? '无残留。⚠ 内存完整性已启用，驱动会被拦（1450）'
+                             : '无残留 ✅');
+    el.style.color = d.hvci ? 'var(--bad)' : 'var(--ok)';
+  }
 }
 
 /* ---------- 渲染：参数 ---------- */
@@ -777,6 +816,69 @@ function showSelftest(x){
     ${x.error?`<div class="kv" style="color:#ff9aa4">错误 &nbsp;<i style="color:#ff9aa4">${esc(x.error)}</i></div>`:''}`;
 }
 
+$('b-drvclean').onclick = async ()=>{
+  const b = $('b-drvclean');
+  b.disabled = true; b.textContent = '清理中…';
+  const r = await POST('/api/driver',{action:'cleanup'});
+  b.disabled = false; b.textContent = '清理驱动残留';
+  if(r && r.message) alert(r.message);
+  pollEvents(); await refresh();
+};
+
+/* ---------- 渲染：版本与升级 ---------- */
+function renderUpdate(){
+  const up = STATE.update || {};
+  const chk = up.check;
+  const ver = $('t-version');
+  if(ver) ver.textContent = 'v' + (STATE.version || '?');
+  const el = $('upd-state'), btn = $('b-updstage');
+  if(!el || !btn) return;
+  el.style.color = 'var(--muted)';
+  const dot = $('d-update');
+  if(dot) dot.className = 'dot' + (chk && chk.newer ? ' on' : '');
+  if(!up.supported){
+    el.textContent = '升级模块不可用（tools/update.py 缺失）';
+    el.style.color = 'var(--warn)'; btn.disabled = true; return;
+  }
+  if(chk && chk.error){
+    el.textContent = chk.error; el.style.color = 'var(--warn)';
+    btn.disabled = true;
+  } else if(chk && chk.newer){
+    el.textContent = '发现新版本 v' + chk.latest + '（当前 v' + chk.current + '）';
+    el.style.color = 'var(--acc)';
+    btn.disabled = !!up.staged;
+    btn.textContent = up.staged ? '已下载 ✓' : '下载升级包';
+  } else if(chk){
+    el.textContent = '已是最新版本（v' + chk.current + '）';
+    el.style.color = 'var(--ok)'; btn.disabled = true;
+  } else {
+    el.textContent = '未检查'; btn.disabled = true;
+  }
+}
+
+$('b-updcheck').onclick = async ()=>{
+  const b = $('b-updcheck');
+  b.disabled = true; b.textContent = '检查中…';
+  const r = await POST('/api/update',{action:'check'});
+  b.disabled = false; b.textContent = '检查更新';
+  if(!r.ok) alert(r.error||'检查失败');
+  pollEvents(); await refresh();
+};
+$('b-updstage').onclick = async ()=>{
+  const b = $('b-updstage');
+  b.disabled = true; b.textContent = '下载中…';
+  const r = await POST('/api/update',{action:'stage'});
+  b.textContent = '下载升级包';
+  if(!r.ok){
+    alert('下载失败：\n' + (r.error||'未知错误'));
+  } else {
+    alert('升级包已下载并通过 SHA256 校验。\n\n' +
+          '接下来：关闭控制台 → 双击仓库根目录的 apply_update.cmd\n' +
+          '脚本会等端口释放后覆盖文件、自动重启，并保留你的配置。');
+  }
+  pollEvents(); await refresh();
+};
+
 /* ---------- 日志 ---------- */
 function appendLogs(list){
   const box=$('log');
@@ -802,7 +904,8 @@ $('b-clearlog').onclick = ()=>{ POST('/api/events/clear'); $('log').innerHTML='<
 /* ---------- 主循环 ---------- */
 function applyState(s){
   STATE = s;
-  renderTop(); renderModes(); renderStats(); renderParams(); renderPrivacy(); renderRules();
+  renderTop(); renderModes(); renderStats(); renderParams(); renderPrivacy();
+  renderDriver(); renderUpdate(); renderRules();
   if(s.last_selftest && $('st').style.display==='none') showSelftest(s.last_selftest);
   if(s.last_dnscheck && $('dns').style.display==='none') showDns(s.last_dnscheck);
 }
