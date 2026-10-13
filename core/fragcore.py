@@ -591,25 +591,32 @@ def _cut_point(host_start, params):
     """算切点偏移。
 
     非随机模式（默认）与改造前**逐字节等价**：
-        cut = max(min_cut, host_start - guard)；若已切进域名，则取 host_start + 1
+        cut = max(lo, host_start - guard)；若已切进域名，则取 host_start + 1
+    其中 lo = max(min_cut, MEASURED_DEVICE_THRESHOLD)。
 
     随机模式（privacy 可选）在**合法窗口**内取随机值：
-        [max(min_cut, MEASURED_DEVICE_THRESHOLD), host_start - 1]
+        [lo, host_start - 1]
     下界来自实测（首段 <= 113 被拦），上界保证完整域名不进首段。
     窗口为空（域名起始位置太靠前）时**回退到固定逻辑**，不抛异常。
 
+    ⚠️ 关于 lo 为什么用 max 而不是 min：早先的写法是 `min(min_cut, THRESHOLD)`，
+    那样一旦用户把 min_cut 调到阈值以下（比如 60），校验就会放松成 `cut < 60`，
+    于是 106 这种**低于设备阈值**的切点也会被放行 —— 分片照样被拦，等于白切。
+    设备阈值是**实测的物理属性**，不是用户偏好，所以它必须是硬下限。
+    （这个 bug 是在把逻辑移植到 Android 版、用同一批测试向量对拍时暴露的。）
+
     ⚠️ 随机模式默认关闭。现有实测只证明了「后缀 >= 114 通过」这一个边界点，
     并没有验证窗口内**每一个** cut 值都能过；设备行为若不单调，随机切点会随机失败。
-    开启前请先跑 tools/scan_window.py 做全窗口扫描。
+    开启前请先跑 tools/sweep_cut.py --window 做全窗口扫描。
     """
+    lo = max(params.min_cut, MEASURED_DEVICE_THRESHOLD)
     if host_start is None:
-        return params.min_cut
+        return lo
     if params.random_cut:
-        lo = max(params.min_cut, MEASURED_DEVICE_THRESHOLD)
         hi = host_start - 1
         if hi >= lo:
             return _rng.randint(lo, hi)
-    cut = max(params.min_cut, host_start - params.guard)
+    cut = max(lo, host_start - params.guard)
     if cut >= host_start:
         cut = host_start + 1                 # 落在域名内部，避免完整域名出现在首段
     return cut
@@ -640,7 +647,9 @@ def split_packet(data, ruleset, params):
         return out
 
     cut = _cut_point(host_start, params)
-    if cut <= 0 or cut >= len(payload) - 1 or cut < min(params.min_cut, MEASURED_DEVICE_THRESHOLD):
+    # 下限必须是 max 而不是 min：设备阈值是硬下限，不是可被 min_cut 放松的偏好
+    if cut <= 0 or cut >= len(payload) - 1 or \
+            cut < max(params.min_cut, MEASURED_DEVICE_THRESHOLD):
         if privacy:
             out["info"] = f"TLS 位置不合适（cut={cut}），跳过分片"
         else:

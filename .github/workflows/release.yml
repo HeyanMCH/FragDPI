@@ -89,11 +89,21 @@ jobs:
           if (-not (Test-Path $zip)) { throw "打包失败" }
           Write-Host "产出 $zip ($((Get-Item $zip).Length) bytes)"
 
+      # ---------------------------------------------------------------- Android APK
+      # runner 自带 Android SDK（ANDROID_HOME 已设置），构建脚本是跨平台的。
+      # 失败**不阻断**发行：Android 版还是 0.x，不该拖住 Windows 版发版。
+      - name: 打 Android APK
+        shell: bash
+        continue-on-error: true
+        run: |
+          bash android/build_apk.sh
+          cp android/dist/*.apk dist/ 2>/dev/null && echo "APK 已并入 dist/" || echo "APK 构建未产出"
+
       - name: 生成 SHA256SUMS
         shell: pwsh
         run: |
           Push-Location dist
-          $lines = Get-ChildItem -File | Where-Object { $_.Name -ne 'SHA256SUMS' } | ForEach-Object {
+          $lines = Get-ChildItem -File | Where-Object { $_.Name -ne 'SHA256SUMS' -and $_.Name -ne 'RELEASE_NOTES.md' } | ForEach-Object {
             $h = (Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLower()
             "$h  $($_.Name)"
           }
@@ -113,21 +123,32 @@ jobs:
           $notes = @"
           ## 安装
 
-          下载 ``FragDPI-$ver-win-x64.zip``，解压后双击 ``start_console.cmd``（会自动提权）。
-          需要本机有 Python 3.8+。哈希见附件 ``SHA256SUMS``。
+          **Windows**：下载 ``FragDPI-$ver-win-x64.zip``，解压后双击 ``start_console.cmd``
+          （会自动提权）。需要本机有 Python 3.8+。
 
-          ⚠️ **已知限制**
+          **Android**：下载 ``FragDPI-android-*.apk`` 直接安装（需允许「安装未知来源应用」）。
+          安卓版目前是 0.x，只覆盖走系统代理的应用 —— 详见 ``android/README.md``。
+
+          Windows 包的哈希见附件 ``SHA256SUMS``。
+
+          ⚠️ **Windows 已知限制**
           - 开了「内存完整性」（内核隔离 / HVCI）的机器上，WinDivert 驱动会被拦下
             （``WinDivertOpen`` 报 1450），拦截功能无法启动。WinDivert 2.2.2 已是上游最新版。
           - 用完想删/移文件夹，先跑 ``cleanup_driver.cmd`` 清掉驱动服务残留。
           "@
           $notes | Out-File -FilePath dist/RELEASE_NOTES.md -Encoding utf8
 
+          $assets = @($zip, "dist/SHA256SUMS")
+          Get-ChildItem dist -Filter *.apk -ErrorAction SilentlyContinue | ForEach-Object {
+            $assets += $_.FullName
+          }
+          Write-Host "将上传："; $assets | ForEach-Object { Write-Host "  $_" }
+
           if (gh release view $tag 2>$null) {
             Write-Host "Release $tag 已存在，改为上传/覆盖资产"
-            gh release upload $tag $zip dist/SHA256SUMS --clobber
+            gh release upload $tag @assets --clobber
           } else {
-            gh release create $tag $zip dist/SHA256SUMS `
+            gh release create $tag @assets `
               --title "FragDPI $ver" `
               --notes-file dist/RELEASE_NOTES.md `
               --generate-notes

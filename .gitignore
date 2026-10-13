@@ -52,3 +52,13 @@ desktop.ini
 scratch/
 private/
 not-in-repo/
+
+# ---------------------------------------------------------------- Android
+android/build/
+android/dist/
+# 本地调试签名密钥库（正式发布必须换成你自己的 keystore）
+android/debug.keystore
+android/.gradle/
+*.apk
+*.ap_
+*.dex

@@ -1,0 +1,91 @@
+name: android
+
+# Android 版的核心逻辑（SNI 解析 / 分片 / 分段代理）是**纯 Java**，不碰 Android API，
+# 所以能在普通 JVM 上跑单测 —— 这部分每次改动都必须过。
+# APK 打包单独一个 job：用 SDK 自带的 aapt2 + d8 + apksigner（不需要 Gradle）。
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- 纯 JVM 单测
+  # 不需要 Android SDK、不需要模拟器：FragCore / FragProxy 都是可独立运行的 Java。
+  core-tests:
+    name: 核心逻辑单测（纯 JVM）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # ⚠️ 只编这 4 个文件：FragCore / FragProxy 是纯 Java；MainActivity /
+      #    ProxyService 依赖 android.jar，**不能**放进这个 job —— 通配 * .java 会把它们
+      #    一起编进来，然后炸出上百个 "package android.app does not exist"。
+      #    （这两个文件由下面的 build-apk job 负责验证能编过。）
+      - name: 编译（只含不依赖 Android API 的文件）
+        run: |
+          mkdir -p out
+          javac -encoding UTF-8 -d out \
+            android/app/src/com/fragdpi/android/FragCore.java \
+            android/app/src/com/fragdpi/android/FragProxy.java \
+            android/app/src/com/fragdpi/android/FragCoreTest.java \
+            android/app/src/com/fragdpi/android/FragProxyTest.java
+
+      - name: FragCore（SNI 解析 + 分片）
+        run: java -Dfile.encoding=UTF-8 -cp out com.fragdpi.android.FragCoreTest
+
+      - name: FragProxy（loopback 真 socket 端到端）
+        run: java -Dfile.encoding=UTF-8 -cp out com.fragdpi.android.FragProxyTest
+
+  # ---------------------------------------------------------------- 打 APK
+  build-apk:
+    name: 打 APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # GitHub 的 ubuntu runner 预装了 Android SDK（ANDROID_HOME 已设置），
+      # 但 build-tools 版本不定；用 sdkmanager 确保有一个可用版本。
+      - name: 准备 build-tools
+        run: |
+          if ! ls "$ANDROID_HOME"/build-tools/*/aapt2 >/dev/null 2>&1; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;34.0.0" || true
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -d "$ANDROID_HOME"/build-tools/*/ || true
+          ls -d "$ANDROID_HOME"/platforms/*/ || true
+
+      - name: 构建 APK
+        run: bash android/build_apk.sh
+
+      - name: 校验签名
+        run: |
+          APK=$(ls android/dist/*.apk | head -1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose "$APK"
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fragdpi-android-apk
+          path: android/dist/*.apk
+          if-no-files-found: error
