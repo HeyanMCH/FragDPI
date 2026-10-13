@@ -618,8 +618,16 @@ def main():
         print("      关闭方法：设置 → 隐私和安全性 → Windows 安全中心 → 设备安全性 →")
         print("                内核隔离 → 关闭「内存完整性」，重启后生效。")
         print("      ⚠ 关闭它会降低系统安全性，请自行权衡。")
+    if drv.get("boot_hazard"):
+        print("\n  [X] 检测到**开机安全隐患**：")
+        for r in drv.get("boot_hazard_reasons", []):
+            print("      · " + r)
+        print("      这意味着重启后可能卡在启动阶段。建议立刻处理：")
+        print("      双击 cleanup_driver.cmd，或手动摘掉那个服务注册。")
     if drv["service_exists"]:
         print(f"\n  [!] 检测到 WinDivert 驱动服务残留（状态 {drv['service_state_name']}）。")
+        print(f"      启动类型 Start={drv.get('start_type')}"
+              f"（3=按需启动，开机不加载，删文件不影响开机）。")
         print("      驱动加载期间内核会锁住仓库里的 WinDivert64.sys —— 这正是")
         print("      「用完之后文件夹删不掉」的原因。")
         if drv["service_running"]:

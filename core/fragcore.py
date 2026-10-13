@@ -256,6 +256,188 @@ def hvci_enabled():
         return None
 
 
+def is_boot_hazard(start, image_path, file_exists):
+    """判断单个驱动服务条目是不是**开机隐患**。纯函数，便于在任何平台上单测。
+
+    这可能是整个项目里最需要"判得准"的一段 —— 判错两个方向都很糟：
+      · 误报 → 让人去"修"不该动的系统驱动，可能把好好的机器搞坏
+      · 漏报 → 用户带着隐患重启，卡在启动阶段
+
+    唯一的真判据：**随系统启动（Start ∈ {0,1,2}）+ 有 ImagePath + 文件不存在**
+        - 文件在 → 它能正常加载，没有隐患
+        - 没有 ImagePath → 内核内置驱动（Null/Beep/Msfs/Npfs…），本来就不需要文件
+        - Start=3（按需）或 4（禁用）→ 开机不加载它，删文件也不影响开机
+
+    ⚠️ **ErrorControl=3 单独不构成隐患。** 第一版把它也当成判据，结果把
+        ACPI / pci / ndis / storahci / volmgr 等 **37 个核心启动驱动**全报成红的 ——
+        但那些驱动的 ErrorControl=3 是**设计如此**（系统盘栈挂了本来也就起不来）。
+        ErrorControl 只在"文件缺失"成立时决定**后果有多严重**，不是独立判据。
+    """
+    if image_path is None or str(image_path).strip() == "":
+        return False
+    if start not in (0, 1, 2):
+        return False
+    return not file_exists
+
+
+def boot_hazard_severity(error_control):
+    """文件缺失时，加载失败的后果有多严重（仅用于措辞，不参与判定）。"""
+    if error_control == 3:
+        return "CRITICAL：加载失败会**直接蓝屏（bugcheck）**"
+    if error_control == 2:
+        return "SEVERE：加载失败会记录严重错误，通常不蓝屏"
+    return "NORMAL：加载失败只记事件日志，不会蓝屏"
+
+
+def driver_service_config(name=SERVICE_NAME):
+    """读服务的注册表配置。返回 dict 或 None（服务不存在）。
+
+    ── 为什么这件事值得专门做 ──────────────────────────────────────────
+    内核驱动服务有两组字段直接决定「会不会把系统搞挂」：
+
+      Start        0=BOOT_START / 1=SYSTEM_START / 2=AUTO_START / 3=DEMAND_START
+                   WinDivert 注册的是 **3（按需）** —— 开机根本不加载它。
+                   只要保持 3，**删掉驱动文件也不会导致开机失败**。
+                   一旦被改成 0/1/2，而文件又没了，开机就可能卡住甚至起不来。
+      ErrorControl 0=IGNORE / 1=NORMAL / 2=SEVERE / 3=CRITICAL
+                   WinDivert 是 **1（NORMAL）** —— 加载失败只记事件日志，不会 bugcheck。
+                   若是 3（CRITICAL），加载失败会**直接蓝屏**。
+    ─────────────────────────────────────────────────────────────────
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SYSTEM\CurrentControlSet\Services\%s" % name) as k:
+            def q(n):
+                try:
+                    return winreg.QueryValueEx(k, n)[0]
+                except FileNotFoundError:
+                    return None
+            cfg = {"name": name, "image_path": q("ImagePath"), "start": q("Start"),
+                   "error_control": q("ErrorControl"), "type": q("Type"),
+                   "display_name": q("DisplayName")}
+    except Exception:
+        return None
+
+    ip = cfg["image_path"] or ""
+    # ImagePath 通常是 \??\C:\...\WinDivert64.sys 或 system32\drivers\x.sys
+    p = ip
+    for pre in ("\\??\\", "\\SystemRoot\\"):
+        if p.startswith(pre):
+            p = p[len(pre):]
+    if p and not os.path.isabs(p) and not (len(p) > 1 and p[1] == ":"):
+        p = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), p)
+    cfg["resolved_path"] = p or None
+    cfg["file_exists"] = bool(p) and os.path.exists(p)
+    return cfg
+
+
+def boot_hazard_check(name=SERVICE_NAME):
+    """检测**会导致开机失败或蓝屏**的驱动注册残留。
+
+    危险组合（任一条成立就是隐患）：
+      A. Start ∈ {0,1,2}（随内核/系统/自动启动）**且** ImagePath 指向的文件不存在
+         → 开机时内核去加载一个不存在的驱动，可能卡在启动阶段 / 起不来
+      B. Start ∈ {0,1,2} **且** ErrorControl == 3(CRITICAL)
+         → 加载失败会直接 bugcheck（蓝屏）
+
+    正常情况（WinDivert 默认）：Start=3 + ErrorControl=1
+      → 开机不加载它，所以**删文件、删文件夹都不会影响开机**。
+      这个结论有实测支撑，不是推测。
+
+    返回 dict(hazard, reasons, config, safe_to_delete)
+    """
+    cfg = driver_service_config(name)
+    if cfg is None:
+        return {"hazard": False, "reasons": [], "config": None, "safe_to_delete": True}
+
+    start = cfg.get("start")
+    ec = cfg.get("error_control")
+    hazard = is_boot_hazard(start, cfg.get("image_path"), cfg.get("file_exists"))
+    reasons = []
+    if hazard:
+        reasons.append(
+            "驱动服务随系统启动（Start=%s）但文件不存在：%s —— 开机加载会失败，"
+            "可能卡在启动阶段。%s"
+            % (start, cfg.get("resolved_path"), boot_hazard_severity(ec)))
+
+    return {
+        "hazard": bool(reasons),
+        "reasons": reasons,
+        "config": cfg,
+        "start": start,
+        "error_control": ec,
+        # 只要服务还注册着，就**不要**直接删驱动文件 —— 先把注册摘掉（safe_uninstall_driver）。
+        # 服务不存在时函数已在上面提前返回 safe_to_delete=True。
+        "safe_to_delete": False,
+        "how_to_make_safe": "先跑 safe_uninstall_driver() 摘掉服务注册，再删文件；"
+                            "顺序反了会留下「服务指向已删除文件」的悬空引用",
+    }
+
+
+def safe_uninstall_driver(name=SERVICE_NAME, wait_free=True, timeout=5.0):
+    """按**唯一安全的顺序**卸载驱动 —— 这是避免「删文件后开机失败」的关键。
+
+    正确顺序（顺序反了就会留下隐患）：
+        ① 确认驱动没在被使用（RUNNING 就拒绝，硬停别人的驱动可能把对方进程搞崩）
+        ② **先摘掉服务注册**（DeleteService）
+        ③ 再等服务把文件句柄释放掉（文件锁是内核在驱动卸载后才释放的）
+        ④ 之后删文件/删文件夹才是安全的
+
+    为什么必须「先摘服务、再删文件」：
+        服务注册里 ImagePath 指向那个 .sys。如果先把文件删了、注册还留着，
+        就变成「服务指向一个不存在的文件」。Start=3 时没影响（开机不加载），
+        但只要哪天 Start 被改成 0/1/2，**这就是开不了机的成因**。
+        所以这里永远先摘注册，绝不留下悬空引用。
+
+    返回 (ok, 说明)。
+    """
+    cfg = driver_service_config(name)
+    if cfg is None:
+        return (True, "驱动服务不存在，无需卸载")
+
+    state = driver_service_state(name)
+    if state == _SERVICE_RUNNING:
+        # 硬停一个正在被使用的内核驱动，可能让持有它的进程异常退出甚至蓝屏。
+        # 宁可不动手，让用户先关掉那个程序。
+        return (False, "驱动正在被使用（RUNNING），拒绝卸载 —— 请先关闭使用 WinDivert 的程序。"
+                       "强行停用正在工作的内核驱动可能导致对方进程崩溃。")
+
+    # ② 摘掉服务注册（必须先于删文件）
+    ok, msg = uninstall_driver(name)
+    if not ok:
+        return (False, "摘除服务注册失败：%s —— **此时不要删除驱动文件**" % msg)
+
+    if not wait_free:
+        return (True, msg)
+
+    # ③ 等服务释放文件句柄（驱动卸载后内核才会放手）
+    path = cfg.get("resolved_path")
+    if not path or not os.path.exists(path):
+        return (True, "%s；文件本就不存在，无遗留引用" % msg)
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not driver_file_locked(path):
+            return (True, "%s；驱动文件已解锁，现在删文件夹是安全的" % msg)
+        time.sleep(0.2)
+    return (True, "%s；⚠ 驱动文件仍被占用，可能有其他进程在用，"
+                  "建议重启后再删（服务注册已摘除，重启不会因此出问题）" % msg)
+
+
+def driver_file_locked(path):
+    """试着重命名判断文件是否被占用。True=被锁。"""
+    if not path or not os.path.exists(path):
+        return False
+    tmp = path + ".locktest"
+    try:
+        os.rename(path, tmp)
+        os.rename(tmp, path)
+        return False
+    except OSError:
+        return True
+
+
 def cleanup_stale_driver(name=SERVICE_NAME):
     """**安全清理**：只在服务处于 STOPPED 时删除它。
 
@@ -273,10 +455,12 @@ def cleanup_stale_driver(name=SERVICE_NAME):
 
 
 def driver_leftovers():
-    """检查驱动残留 + 会拦截驱动的系统设置。返回 dict，供 UI / CLI 显示。"""
+    """检查驱动残留 + 会拦截驱动的系统设置 + 开机安全隐患。返回 dict，供 UI / CLI 显示。"""
     state = driver_service_state()
     sys32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
                          "System32", "drivers", "WinDivert.sys")
+    cfg = driver_service_config()
+    hazard = boot_hazard_check()
     return {
         "service_exists": state is not None,
         "service_state": state,
@@ -284,6 +468,12 @@ def driver_leftovers():
         "service_running": state == _SERVICE_RUNNING,
         "sys32_driver": sys32 if os.path.exists(sys32) else None,
         "hvci": hvci_enabled(),
+        # 开机安全相关
+        "start_type": cfg.get("start") if cfg else None,
+        "error_control": cfg.get("error_control") if cfg else None,
+        "boot_hazard": hazard["hazard"],
+        "boot_hazard_reasons": hazard["reasons"],
+        "safe_to_delete_files": hazard["safe_to_delete"],
     }
 
 

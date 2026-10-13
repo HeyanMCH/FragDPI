@@ -21,6 +21,7 @@
 或：
     python tests/test_fragcore.py
 """
+import inspect
 import os
 import re
 import struct
@@ -965,6 +966,91 @@ class TestDriverManagement(unittest.TestCase):
         self.assertIn("跳过", msg)
         self.assertTrue(fc.driver_leftovers()["service_exists"],
                         "RUNNING 的服务不该被删掉")
+
+
+class TestBootSafety(unittest.TestCase):
+    """开机安全判据 —— 全项目最需要"判得准"的一段。
+
+    判错两个方向都很糟：
+      · 误报 → 让人去"修"不该动的系统驱动，可能把好好的机器搞坏
+      · 漏报 → 用户带着隐患重启，卡在启动阶段
+
+    这一组用例的存在理由就是第一版真的误报了：
+    把「Start∈{0,1,2} 且 ErrorControl=3」当成隐患，结果 ACPI / pci / ndis /
+    storahci / volmgr 等 **37 个核心启动驱动**全被报成红的。
+    """
+
+    def test_auto_start_with_missing_file_is_hazard(self):
+        for start in (0, 1, 2):
+            with self.subTest(start=start):
+                self.assertTrue(fc.is_boot_hazard(start, "System32\\drivers\\x.sys", False))
+
+    def test_auto_start_with_existing_file_is_not_hazard(self):
+        """★ 回归用例：核心系统驱动 Start=0/1 且文件都在 → 绝不能报隐患。"""
+        for start in (0, 1, 2):
+            with self.subTest(start=start):
+                self.assertFalse(
+                    fc.is_boot_hazard(start, "System32\\drivers\\ACPI.sys", True))
+
+    def test_demand_start_is_never_hazard(self):
+        """WinDivert 注册的就是 Start=3（按需）—— 开机不加载它。
+
+        所以「删驱动文件 / 删整个文件夹」都不会影响开机。这个结论是本项目
+        敢让用户直接删文件夹的依据。
+        """
+        self.assertFalse(fc.is_boot_hazard(3, "C:\\x\\WinDivert64.sys", False))
+        self.assertFalse(fc.is_boot_hazard(4, "C:\\x\\WinDivert64.sys", False))
+
+    def test_no_image_path_is_not_hazard(self):
+        """没有 ImagePath 的是内核内置驱动（Null/Beep/Msfs/Npfs/Wof），不需要文件。"""
+        for empty in (None, "", "   "):
+            with self.subTest(image_path=empty):
+                self.assertFalse(fc.is_boot_hazard(0, empty, False))
+
+    def test_error_control_cannot_influence_the_verdict(self):
+        """★ 把误报的根因钉死：判定只能看 (start, image_path, file_exists)。
+
+        函数签名里根本没有 error_control —— 从结构上杜绝它再被塞进判据。
+        """
+        params = list(inspect.signature(fc.is_boot_hazard).parameters)
+        self.assertEqual(params, ["start", "image_path", "file_exists"])
+        for ec in (0, 1, 2, 3):
+            with self.subTest(error_control=ec):
+                self.assertFalse(fc.is_boot_hazard(0, "x.sys", True))
+
+    def test_severity_wording_is_about_consequence_not_verdict(self):
+        # CRITICAL：确实会蓝屏
+        self.assertIn("蓝屏", fc.boot_hazard_severity(3))
+        # NORMAL：文案里也会出现"蓝屏"二字 —— 但语义是「不会蓝屏」，
+        # 所以断言要盯住"不会"，不能只查关键词是否存在（第一版就是这么写错的）
+        self.assertIn("不会蓝屏", fc.boot_hazard_severity(1))
+        self.assertNotIn("直接蓝屏", fc.boot_hazard_severity(1))
+        self.assertIn("日志", fc.boot_hazard_severity(1))
+
+    def test_boot_hazard_check_shape(self):
+        h = fc.boot_hazard_check()
+        for k in ("hazard", "reasons", "config", "safe_to_delete"):
+            self.assertIn(k, h)
+        self.assertIsInstance(h["hazard"], bool)
+        self.assertIsInstance(h["reasons"], list)
+        if not fc.driver_leftovers()["service_exists"]:
+            self.assertFalse(h["hazard"], "没有服务时不应报隐患")
+            self.assertTrue(h["safe_to_delete"])
+
+    def test_safe_uninstall_is_idempotent_and_refuses_running(self):
+        ok, msg = fc.safe_uninstall_driver()
+        self.assertIsInstance(ok, bool)
+        self.assertIsInstance(msg, str)
+        left = fc.driver_leftovers()
+        if left["service_running"]:
+            self.assertFalse(ok, "RUNNING 时必须拒绝 —— 硬停工作中的内核驱动可能崩对方")
+            self.assertIn("拒绝", msg)
+        elif not left["service_exists"]:
+            self.assertTrue(ok)
+
+    def test_driver_file_locked_on_missing_path(self):
+        self.assertFalse(fc.driver_file_locked("no/such/file.sys"))
+        self.assertFalse(fc.driver_file_locked(None))
 
 
 if __name__ == "__main__":

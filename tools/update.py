@@ -225,19 +225,51 @@ def _staged_root():
 
 # ------------------------------------------------------------------ 应用
 def write_apply_script(launch=True):
-    """写一个自删除的替换脚本。控制台退出后由用户双击执行。"""
+    """写一个自删除、自提权的替换脚本。控制台退出后由用户双击执行。
+
+    ⚠️ 为什么必须先清驱动服务再覆盖文件（这一段是被用户的安全顾虑逼出来的）：
+
+        WinDivert 的内核服务 ImagePath 指向仓库里的 WinDivert64.sys。
+        驱动还加载着的时候，内核锁着这个文件 —— robocopy 覆盖它会失败，
+        结果就是**覆盖到一半的坏安装**（部分文件是新的、部分是旧的）。
+
+        所以顺序必须是：① 摘掉服务注册（同时解锁文件）→ ② 覆盖 → ③ 重启程序。
+        把这三步写在同一个脚本里，用户只要双击一次，不给"顺序做错"的机会。
+
+    另外脚本会自提权 —— 摘服务注册需要管理员权限。
+    """
     staged = _staged_root()
     if staged is None:
         return (False, "暂存目录不可用，请先 --stage")
     lines = [
         "@echo off",
-        "rem 由 FragDPI 升级器生成：等控制台退出 -> 覆盖文件 -> 重新启动 -> 自删",
+        "rem 由 FragDPI 升级器生成：自提权 -> 摘驱动服务 -> 等控制台退出 -> 覆盖 -> 重启 -> 自删",
         "setlocal",
         "chcp 65001 >nul",
+        "",
+        "rem ---- 自提权（摘驱动服务需要管理员）----",
+        "net session >nul 2>&1",
+        "if %errorlevel% neq 0 (",
+        '    powershell -NoProfile -Command "Start-Process -FilePath \'%~f0\' -Verb RunAs"',
+        "    exit /b",
+        ")",
+        "",
         'set "SRC=%s"' % staged,
         'set "DST=%s"' % ROOT,
         "",
-        "echo 等待 FragDPI 退出（最多 60 秒）…",
+        "rem ---- 找 Python ----",
+        'set "PYEXE="',
+        'where py >nul 2>&1 && set "PYEXE=py -3"',
+        'if not defined PYEXE (where python >nul 2>&1 && set "PYEXE=python")',
+        'if not defined PYEXE (echo [X] 找不到 Python，无法清理驱动 & pause & exit /b 1)',
+        "",
+        "rem ---- ① 先摘掉驱动服务，释放被锁的 WinDivert64.sys ----",
+        "echo [1/4] 清理 WinDivert 驱动服务（否则驱动文件被锁，覆盖会失败）…",
+        '%PYEXE% "%DST%\\tools\\cleanup_driver.py" --clean',
+        "echo       （Cleanup 失败不阻断：可能本来就没有服务）",
+        "",
+        "rem ---- ② 等控制台退出 ----",
+        "echo [2/4] 等待 FragDPI 退出（最多 60 秒）…",
         "set /a _n=0",
         ":wait",
         'netstat -ano | findstr ":8899" | findstr LISTENING >nul',
@@ -248,16 +280,23 @@ def write_apply_script(launch=True):
         "goto wait",
         "",
         ":copy",
-        "echo 正在覆盖文件…",
+        "rem ---- ③ 覆盖（保留用户配置）----",
+        "echo [3/4] 正在覆盖文件…",
         'robocopy "%SRC%" "%DST%" /E /NFL /NDL /NJH /NJS /XF fragconfig.json dns_backup.json >nul',
         "if errorlevel 8 (",
-        "    echo [X] 覆盖失败，请检查权限。源文件仍保留在 %SRC%",
+        "    echo.",
+        "    echo [X] 覆盖失败（robocopy 退出码 %errorlevel%）。",
+        "    echo     常见原因：还有程序占着文件，或权限不足。",
+        "    echo     新版本仍在：%SRC%",
+        "    echo     你的原安装未被破坏，可以重试。",
         "    pause",
         "    exit /b 1",
         ")",
         'if exist "%DST%\\_update_staging" rmdir /S /Q "%DST%\\_update_staging"',
         'if exist "%DST%\\update_state.json" del /Q "%DST%\\update_state.json"',
-        "echo [✓] 升级完成。",
+        "",
+        "rem ---- ④ 重启 ----",
+        "echo [4/4] 升级完成。",
         "if \"%1\"==\"--no-launch\" goto done",
         'start "" "%DST%\\start_console.cmd"',
         ":done",
@@ -271,10 +310,24 @@ def write_apply_script(launch=True):
 
 
 def apply_now():
-    """直接在当前进程里覆盖（要求程序已退出）。主要用于测试与命令行。"""
+    """直接在当前进程里覆盖（要求程序已退出）。主要用于测试与命令行。
+
+    同样**先摘驱动服务** —— 否则 WinDivert64.sys 被内核锁着，覆盖会失败，
+    留下半新半旧的坏安装。
+    """
     staged = _staged_root()
     if staged is None:
         return (False, "暂存目录不可用，请先 --stage")
+
+    # ① 摘掉驱动服务（释放被锁的 .sys）
+    try:
+        import fragcore as fc
+        ok, msg = fc.safe_uninstall_driver()
+        if not ok:
+            return (False, "覆盖前清理驱动失败：%s —— 已中止，未改动任何文件" % msg)
+    except Exception:
+        pass
+
     saved = {}
     for rel in PRESERVE:
         p = os.path.join(ROOT, rel)
